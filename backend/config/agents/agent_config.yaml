@@ -1,0 +1,55 @@
+# MAESTRO Agent Configuration
+
+agents:
+  master:
+    enabled: true
+    model: "gemini-pro"
+    max_retries: 3
+    timeout: 300
+    
+  market:
+    enabled: true
+    model: "gemini-pro"
+    data_source: "iqvia"
+    cache_ttl: 3600
+    
+  patent:
+    enabled: true
+    model: "gemini-pro"
+    data_sources:
+      - "uspto"
+      - "epo"
+    cache_ttl: 7200
+    
+  clinical:
+    enabled: true
+    model: "gemini-pro"
+    data_sources:
+      - "clinicaltrials_gov"
+      - "who_ictrp"
+    cache_ttl: 3600
+    
+  trade:
+    enabled: true
+    model: "gemini-pro"
+    data_sources:
+      - "data_gov_in"
+      - "un_comtrade"
+    cache_ttl: 7200
+    
+  internal_knowledge:
+    enabled: true
+    model: "gemini-pro"
+    vector_store: "chroma"
+    embedding_model: "text-embedding-ada-002"
+    chunk_size: 1000
+    chunk_overlap: 200
+    
+  web_intelligence:
+    enabled: true
+    model: "gemini-pro"
+    search_providers:
+      - "google_serper"
+      - "duckduckgo"
+    pubmed_enabled: true
+    max_search_results: 10

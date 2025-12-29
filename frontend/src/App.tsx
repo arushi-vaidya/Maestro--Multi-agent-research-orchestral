@@ -94,7 +94,7 @@ const App = () => {
       relevance: 85,
       agentId: 'market'
     },
-    
+
     // Clinical Trials Agent References
     {
       type: 'clinical-trial',
@@ -205,47 +205,46 @@ const App = () => {
     setIsProcessing(true);
     setResults(null);
     setSelectedAgent(null);
-    
-    const agentSequence = ['market', 'clinical', 'patent', 'trade'];
-    
-    for (let i = 0; i < agentSequence.length; i++) {
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      setActiveAgents(prev => [...prev, agentSequence[i]]);
+
+    // Show market agent as active (Feature 1 only uses Market Agent)
+    setActiveAgents(['market']);
+
+    try {
+      // Call backend API
+      const response = await fetch('http://172.20.10.2:8000/api/query', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ query: userQuery }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Backend error: ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      // Backend returns the correct format already
+      setResults(data);
+
+      console.log('✅ Analysis complete:', data);
+
+    } catch (error) {
+      console.error('❌ Error calling backend:', error);
+      alert(
+        'Failed to connect to backend.\n\n' +
+        'Make sure:\n' +
+        '1. Backend is running: python main.py\n' +
+        '2. Backend is on: http://localhost:8000\n' +
+        '3. Check browser console for details'
+      );
+
+      // Reset states on error
+      setActiveAgents([]);
+    } finally {
+      setIsProcessing(false);
     }
-
-    await new Promise(resolve => setTimeout(resolve, 2000));
-
-    const mockResults: AnalysisResults = {
-      summary: `Comprehensive analysis completed for: "${userQuery}"`,
-      insights: [
-        {
-          agent: 'Market Intelligence',
-          finding: 'Global market size: $12.5B with 15.2% CAGR',
-          confidence: 92
-        },
-        {
-          agent: 'Clinical Trials',
-          finding: '247 active trials, 12 in Phase III',
-          confidence: 88
-        },
-        {
-          agent: 'Patent Analysis',
-          finding: 'FTO status: Clear with 3 expiring patents in 2025',
-          confidence: 85
-        },
-        {
-          agent: 'Trade Data',
-          finding: 'Import dependency: 65% from China, India emerging',
-          confidence: 90
-        }
-      ],
-      recommendation: 'High opportunity with moderate IP risk. Consider partnership strategy.',
-      timelineSaved: '8.5 hours',
-      references: generateMockReferences()
-    };
-
-    setResults(mockResults);
-    setIsProcessing(false);
   };
 
   const handleSearch = () => {
@@ -421,9 +420,9 @@ ${idx + 1}. [${ref.type.toUpperCase()}] ${ref.title}
 
     const existingKB = localStorage.getItem('maestro_knowledge_base');
     const knowledgeBase = existingKB ? JSON.parse(existingKB) : [];
-    
+
     knowledgeBase.push(knowledgeEntry);
-    
+
     localStorage.setItem('maestro_knowledge_base', JSON.stringify(knowledgeBase));
 
     alert(`Analysis saved to Knowledge Base!\n\nTotal entries: ${knowledgeBase.length}`);
@@ -483,7 +482,7 @@ ${idx + 1}. [${ref.type.toUpperCase()}] ${ref.title}
                 <X className="w-5 h-5" />
               </button>
             </div>
-            
+
             {getSavedResearch().length === 0 ? (
               <div className="text-center py-12 text-gray-500 animate-fadeIn">
                 <Database className="w-12 h-12 mx-auto mb-3 opacity-50" />
@@ -492,8 +491,8 @@ ${idx + 1}. [${ref.type.toUpperCase()}] ${ref.title}
             ) : (
               <div className="space-y-4">
                 {getSavedResearch().map((research, idx) => (
-                  <div 
-                    key={research.id} 
+                  <div
+                    key={research.id}
                     className="border border-gray-200 rounded-xl p-4 hover:border-purple-300 hover:shadow-lg transition-all duration-300 bg-white/50 backdrop-blur-sm transform hover:scale-[1.02] animate-slideUp"
                     style={{ animationDelay: `${idx * 100}ms` }}
                   >
@@ -589,23 +588,22 @@ ${idx + 1}. [${ref.type.toUpperCase()}] ${ref.title}
             const isActive = activeAgents.includes(agent.id);
             const isCompleted = isActive && !isProcessing;
             const agentRefs = getAgentReferences(agent.id);
-            
+
             const colorClasses = {
               blue: 'from-blue-500 to-cyan-500',
               green: 'from-green-500 to-emerald-500',
               purple: 'from-purple-500 to-pink-500',
               orange: 'from-orange-500 to-amber-500'
             };
-            
+
             return (
               <div
                 key={agent.id}
                 onClick={() => handleAgentClick(agent.id)}
-                className={`bg-white/90 backdrop-blur-sm rounded-2xl p-6 border-2 transition-all duration-500 transform hover:scale-105 ${
-                  isActive
+                className={`bg-white/90 backdrop-blur-sm rounded-2xl p-6 border-2 transition-all duration-500 transform hover:scale-105 ${isActive
                     ? `border-${agent.color}-400 shadow-2xl ${isCompleted ? 'cursor-pointer animate-bounce-once' : 'animate-pulse-slow'}`
                     : 'border-gray-200 hover:border-gray-300 shadow-md hover:shadow-lg'
-                } animate-slideUp`}
+                  } animate-slideUp`}
                 style={{ animationDelay: `${idx * 100}ms` }}
               >
                 <div className="flex items-start justify-between mb-3">
@@ -654,7 +652,7 @@ ${idx + 1}. [${ref.type.toUpperCase()}] ${ref.title}
                   <X className="w-6 h-6 text-gray-500" />
                 </button>
               </div>
-              
+
               <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)]">
                 <div className="space-y-3">
                   {getAgentReferences(selectedAgent).map((ref, idx) => {
@@ -665,10 +663,10 @@ ${idx + 1}. [${ref.type.toUpperCase()}] ${ref.title}
                       green: 'from-green-500 to-emerald-500',
                       orange: 'from-orange-500 to-amber-500'
                     };
-                    
+
                     return (
-                      <div 
-                        key={idx} 
+                      <div
+                        key={idx}
                         className="border border-gray-200 rounded-xl p-4 hover:border-gray-300 hover:shadow-lg transition-all duration-300 bg-white/50 backdrop-blur-sm transform hover:scale-[1.02] animate-slideUp"
                         style={{ animationDelay: `${idx * 50}ms` }}
                       >
@@ -737,8 +735,8 @@ ${idx + 1}. [${ref.type.toUpperCase()}] ${ref.title}
             {/* Insights Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
               {results.insights.map((insight, idx) => (
-                <div 
-                  key={idx} 
+                <div
+                  key={idx}
                   className="border-2 border-gray-200 rounded-xl p-4 hover:border-indigo-300 hover:shadow-lg transition-all duration-300 bg-white/50 backdrop-blur-sm transform hover:scale-105 animate-slideUp"
                   style={{ animationDelay: `${idx * 100}ms` }}
                 >
@@ -793,10 +791,10 @@ ${idx + 1}. [${ref.type.toUpperCase()}] ${ref.title}
                       green: 'from-green-500 to-emerald-500',
                       orange: 'from-orange-500 to-amber-500'
                     };
-                    
+
                     return (
-                      <div 
-                        key={idx} 
+                      <div
+                        key={idx}
                         className="border border-gray-200 rounded-xl p-4 hover:border-gray-300 hover:shadow-lg transition-all duration-300 bg-white/50 backdrop-blur-sm transform hover:scale-[1.01] animate-slideUp"
                         style={{ animationDelay: `${idx * 50}ms` }}
                       >
@@ -850,21 +848,21 @@ ${idx + 1}. [${ref.type.toUpperCase()}] ${ref.title}
 
             {/* Export Options */}
             <div className="flex gap-3 flex-wrap">
-              <button 
+              <button
                 onClick={handleExportPDF}
                 className="px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 text-white rounded-xl hover:from-blue-700 hover:to-cyan-700 transition-all duration-300 flex items-center gap-2 shadow-lg hover:shadow-xl transform hover:scale-105"
               >
                 <Download className="w-4 h-4" />
                 Export to PDF
               </button>
-              <button 
+              <button
                 onClick={handleExportExcel}
                 className="px-4 py-2 bg-gradient-to-r from-green-600 to-emerald-600 text-white rounded-xl hover:from-green-700 hover:to-emerald-700 transition-all duration-300 flex items-center gap-2 shadow-lg hover:shadow-xl transform hover:scale-105"
               >
                 <Download className="w-4 h-4" />
                 Export to Excel
               </button>
-              <button 
+              <button
                 onClick={handleSaveToKnowledgeBase}
                 className="px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-xl hover:from-purple-700 hover:to-pink-700 transition-all duration-300 flex items-center gap-2 shadow-lg hover:shadow-xl transform hover:scale-105"
               >
@@ -883,7 +881,7 @@ ${idx + 1}. [${ref.type.toUpperCase()}] ${ref.title}
               { value: '7+', label: 'Integrated Data Sources', color: 'from-green-500 to-emerald-500' },
               { value: '4', label: 'Specialized AI Agents', color: 'from-purple-500 to-pink-500' }
             ].map((stat, idx) => (
-              <div 
+              <div
                 key={idx}
                 className="bg-white/90 backdrop-blur-sm rounded-2xl p-6 shadow-xl border border-gray-100 transform hover:scale-105 transition-all duration-300 hover:shadow-2xl animate-slideUp"
                 style={{ animationDelay: `${idx * 100}ms` }}
