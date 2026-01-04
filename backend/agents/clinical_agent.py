@@ -1,138 +1,174 @@
-# Clinical Trials Agent with Mock Data
+import requests
+import os
+import logging
+from dotenv import load_dotenv
 
-from typing import List, Dict, Any
-import random
-from datetime import date, timedelta
+load_dotenv()
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 
-# --- MOCK DATA ---
-MOCK_CLINICAL_TRIALS: Dict[str, List[Dict[str, Any]]] = {
-    "GLP-1": [
-        {
-            "nct_id": f"NCT0{1000+i}",
-            "title": f"Efficacy of GLP-1 Agonist in Type 2 Diabetes (Trial {i+1})",
-            "phase": random.choice([1, 2, 3, 4]),
-            "status": random.choice(["Recruiting", "Completed", "Terminated"]),
-            "enrollment": random.randint(100, 2000),
-            "start_date": str(date(2020, 1, 1) + timedelta(days=30*i)),
-            "completion_date": str(date(2022, 1, 1) + timedelta(days=30*i)),
-            "primary_outcome": "Change in HbA1c",
-            "sponsor": random.choice(["Novo Nordisk", "Eli Lilly", "AstraZeneca"]),
-            "location_count": random.randint(5, 50),
-        } for i in range(25)
-    ],
-    "Alzheimer's": [
-        {
-            "nct_id": f"NCT1{1000+i}",
-            "title": f"{drug} in Early Alzheimer's Disease (Trial {i+1})",
-            "phase": random.choice([1, 2, 3]),
-            "status": random.choice(["Recruiting", "Completed", "Terminated"]),
-            "enrollment": random.randint(50, 1500),
-            "start_date": str(date(2019, 6, 1) + timedelta(days=45*i)),
-            "completion_date": str(date(2021, 6, 1) + timedelta(days=45*i)),
-            "primary_outcome": "Cognitive function improvement",
-            "sponsor": random.choice(["Eisai", "Biogen", "Roche"]),
-            "location_count": random.randint(3, 30),
-        } for i, drug in enumerate(["Leqembi", "Donanemab"]*13)
-    ],
-    "Oncology": [
-        {
-            "nct_id": f"NCT2{1000+i}",
-            "title": f"{drug} for Advanced Cancer (Trial {i+1})",
-            "phase": random.choice([1, 2, 3, 4]),
-            "status": random.choice(["Recruiting", "Completed", "Terminated"]),
-            "enrollment": random.randint(80, 3000),
-            "start_date": str(date(2018, 3, 1) + timedelta(days=60*i)),
-            "completion_date": str(date(2020, 3, 1) + timedelta(days=60*i)),
-            "primary_outcome": "Progression-free survival",
-            "sponsor": random.choice(["Merck", "Bristol-Myers Squibb"]),
-            "location_count": random.randint(10, 100),
-        } for i, drug in enumerate(["Keytruda", "Opdivo"]*15)
-    ],
-    "CRISPR": [
-        {
-            "nct_id": f"NCT3{1000+i}",
-            "title": f"CRISPR Gene Editing for Rare Disease (Trial {i+1})",
-            "phase": random.choice([1, 2]),
-            "status": random.choice(["Recruiting", "Completed"]),
-            "enrollment": random.randint(10, 200),
-            "start_date": str(date(2021, 5, 1) + timedelta(days=90*i)),
-            "completion_date": str(date(2023, 5, 1) + timedelta(days=90*i)),
-            "primary_outcome": "Gene correction rate",
-            "sponsor": random.choice(["CRISPR Therapeutics", "Editas Medicine"]),
-            "location_count": random.randint(1, 10),
-        } for i in range(20)
-    ],
-    "Rare Disease": [
-        {
-            "nct_id": f"NCT4{1000+i}",
-            "title": f"Therapy for Rare Disease X (Trial {i+1})",
-            "phase": random.choice([1, 2, 3]),
-            "status": random.choice(["Recruiting", "Completed", "Terminated"]),
-            "enrollment": random.randint(5, 300),
-            "start_date": str(date(2017, 8, 1) + timedelta(days=120*i)),
-            "completion_date": str(date(2019, 8, 1) + timedelta(days=120*i)),
-            "primary_outcome": "Symptom reduction",
-            "sponsor": random.choice(["RareGen", "Orphan Pharma"]),
-            "location_count": random.randint(1, 8),
-        } for i in range(22)
-    ],
-    "Cardiovascular": [
-        {
-            "nct_id": f"NCT5{1000+i}",
-            "title": f"Cardiovascular Outcome Study (Trial {i+1})",
-            "phase": random.choice([2, 3, 4]),
-            "status": random.choice(["Recruiting", "Completed", "Terminated"]),
-            "enrollment": random.randint(200, 5000),
-            "start_date": str(date(2016, 2, 1) + timedelta(days=90*i)),
-            "completion_date": str(date(2018, 2, 1) + timedelta(days=90*i)),
-            "primary_outcome": "Major adverse cardiac events",
-            "sponsor": random.choice(["Pfizer", "Novartis"]),
-            "location_count": random.randint(10, 60),
-        } for i in range(25)
-    ],
-}
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
-# --- Helper Functions ---
-def _get_relevant_trials(query: str) -> List[Dict[str, Any]]:
-    query_lower = query.lower()
-    relevant_trials = []
-    for category, trials in MOCK_CLINICAL_TRIALS.items():
-        if category.lower() in query_lower:
-            relevant_trials.extend(trials)
-        else:
-            for keyword in ["ozempic", "wegovy", "mounjaro", "leqembi", "donanemab", "keytruda", "opdivo", "crispr"]:
-                if keyword in query_lower and any(keyword in t["title"].lower() for t in trials):
-                    relevant_trials.extend([t for t in trials if keyword in t["title"].lower()])
-    return relevant_trials[:30]
-
-def _calculate_confidence(trials: List[Dict[str, Any]]) -> float:
-    if not trials:
-        return 0.0
-    phase_scores = {1: 0.5, 2: 0.7, 3: 0.9, 4: 1.0}
-    avg_phase = sum(phase_scores.get(t["phase"], 0.5) for t in trials) / len(trials)
-    count_score = min(len(trials) / 30, 1.0)
-    return round(avg_phase * count_score, 2)
-
-def _generate_references(trials: List[Dict[str, Any]]) -> List[Dict[str, str]]:
-    return [{"nct_id": t["nct_id"], "title": t["title"]} for t in trials]
-
-# --- Agent Class ---
 class ClinicalAgent:
-    @staticmethod
-    def process(query: str) -> Dict[str, Any]:
-        trials = _get_relevant_trials(query)
-        confidence = _calculate_confidence(trials)
-        references = _generate_references(trials)
-        # Simulate LLM analysis
-        summary = f"Found {len(trials)} relevant clinical trials for query: '{query}'. "
-        if trials:
-            summary += f"Most are in phase {max(t['phase'] for t in trials)}. "
-            summary += f"Top sponsors: {', '.join(set(t['sponsor'] for t in trials))}."
-        else:
-            summary += "No relevant trials found."
+    def __init__(self):
+        self.groq_api_key = GROQ_API_KEY
+        logger.info("ClinicalAgent initialized")
+
+    def extract_keywords(self, query: str) -> str:
+        logger.info(f"Starting keyword extraction for query: '{query}'")
+        # Call Groq API to extract keywords
+        url = "https://api.groq.com/openai/v1/chat/completions"
+        headers = {"Authorization": f"Bearer {self.groq_api_key}", "Content-Type": "application/json"}
+        payload = {
+            "model": "llama-3.1-8b-instant",
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "You are a medical keyword extractor for clinical trials search. Extract ONLY medical, clinical, and therapeutic keywords from the query. EXCLUDE business terms like 'market', 'opportunity', 'analysis', 'revenue', etc. Focus on: diseases, conditions, drugs, therapeutic areas, treatments. Return only the medical keywords separated by commas."
+                },
+                {
+                    "role": "user",
+                    "content": query
+                }
+            ],
+            "temperature": 0.3,
+            "max_tokens": 100
+        }
+        try:
+            logger.info("Sending request to Groq API for keyword extraction")
+            response = requests.post(url, json=payload, headers=headers, timeout=10)
+            response.raise_for_status()
+            keywords = response.json().get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+            logger.info(f"Extracted keywords: '{keywords}'")
+            return keywords or query
+        except Exception as e:
+            logger.error(f"Groq keyword extraction failed: {e}")
+            print(f"Groq keyword extraction failed: {e}")
+            logger.info(f"Falling back to original query: '{query}'")
+            return query
+
+    def search_trials(self, keywords: str, page_size: int = 1000) -> dict:
+        logger.info(f"Searching clinical trials for keywords: '{keywords}' (page_size={page_size})")
+        url = "https://clinicaltrials.gov/api/v2/studies"
+        params = {"query.term": keywords, "pageSize": page_size}
+        logger.info(f"Making request to ClinicalTrials.gov API: {url}")
+        response = requests.get(url, params=params, timeout=100)
+        response.raise_for_status()
+        data = response.json()
+        trial_count = len(data.get('studies', []))
+        logger.info(f"Successfully retrieved {trial_count} clinical trials")
+        return data
+
+    def get_trial_details(self, nct_id: str) -> dict:
+        logger.info(f"Fetching detailed information for trial: {nct_id}")
+        url = f"https://clinicaltrials.gov/api/v2/studies/{nct_id}"
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        logger.info(f"Successfully retrieved details for trial: {nct_id}")
+        return response.json()
+
+    def generate_comprehensive_summary(self, trials_data: dict, keywords: str) -> str:
+        """Generate a comprehensive summary of all trials using Groq"""
+        logger.info("Starting comprehensive summary generation")
+        url = "https://api.groq.com/openai/v1/chat/completions"
+        headers = {"Authorization": f"Bearer {self.groq_api_key}", "Content-Type": "application/json"}
+        
+        # Prepare a concise representation of the trials data
+        trials_list = []
+        total_trials = len(trials_data.get('studies', []))
+        logger.info(f"Processing {total_trials} trials for summary")
+        
+        for study in trials_data.get('studies', [])[:50]:  # Limit to first 50 to avoid token limits
+            try:
+                nct_id = study['protocolSection']['identificationModule']['nctId']
+                title = study['protocolSection']['identificationModule']['briefTitle']
+                status = study['protocolSection']['statusModule'].get('overallStatus', 'Unknown')
+                trials_list.append(f"NCT ID: {nct_id}, Title: {title}, Status: {status}")
+            except KeyError:
+                continue
+        
+        logger.info(f"Prepared {len(trials_list)} trial summaries for analysis")
+        trials_text = "\n".join(trials_list)
+        
+        payload = {
+            "model": "llama-3.1-8b-instant",
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "You are a medical research analyst. Provide a comprehensive, professional summary of clinical trials data. Include key insights about trial statuses, common themes, and notable findings. Keep it concise but informative."
+                },
+                {
+                    "role": "user",
+                    "content": f"Search keywords: {keywords}\n\nTotal trials found: {total_trials}\n\nSample of trials (showing up to 50):\n{trials_text}\n\nProvide a comprehensive summary of these clinical trials."
+                }
+            ],
+            "temperature": 0.7,
+            "max_tokens": 500
+        }
+        
+        try:
+            logger.info("Sending request to Groq API for summary generation")
+            response = requests.post(url, json=payload, headers=headers, timeout=30)
+            response.raise_for_status()
+            summary = response.json().get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+            logger.info("Successfully generated comprehensive summary")
+            return summary or f"Found {total_trials} clinical trials related to {keywords}."
+        except Exception as e:
+            logger.error(f"Groq summary generation failed: {e}")
+            print(f"Groq summary generation failed: {e}")
+            fallback_summary = f"Found {total_trials} clinical trials related to {keywords}. Unable to generate detailed summary."
+            logger.info("Using fallback summary")
+            return fallback_summary
+
+    def process(self, user_query: str) -> dict:
+        logger.info("="*50)
+        logger.info(f"Starting ClinicalAgent process for query: '{user_query}'")
+        logger.info("="*50)
+        
+        # Step 1: Extract keywords
+        logger.info("Step 1/4: Extracting keywords")
+        keywords = self.extract_keywords(user_query)
+        
+        # Step 2: Search trials
+        logger.info("Step 2/4: Searching clinical trials")
+        trials_result = self.search_trials(keywords)
+        
+        # Step 3: Generate comprehensive summary
+        logger.info("Step 3/4: Generating comprehensive summary")
+        comprehensive_summary = self.generate_comprehensive_summary(trials_result, keywords)
+        
+        # Step 4: Prepare response
+        logger.info("Step 4/4: Preparing final response")
+        basic_summary = f"Found {len(trials_result.get('studies', []))} trials for: {keywords}"
+        
+        trials = []
+        for study in trials_result.get('studies', []):
+            nct_id = study['protocolSection']['identificationModule']['nctId']
+            title = study['protocolSection']['identificationModule']['briefTitle']
+            trials.append({"nct_id": nct_id, "title": title})
+        
+        logger.info(f"Prepared {len(trials)} trial entries")
+        logger.info("="*50)
+        logger.info("ClinicalAgent process completed successfully")
+        logger.info("="*50)
+        
         return {
-            "summary": summary,
-            "confidence": confidence,
+            "summary": basic_summary,
+            "comprehensive_summary": comprehensive_summary,
             "trials": trials,
-            "references": references,
+            "raw": trials_result
+        }
+
+    def get_trial_summary(self, nct_id: str) -> dict:
+        logger.info(f"Getting trial summary for NCT ID: {nct_id}")
+        details = self.get_trial_details(nct_id)
+        id_mod = details['protocolSection']['identificationModule']
+        title = id_mod.get('briefTitle', 'N/A')
+        summary = details['protocolSection'].get('descriptionModule', {}).get('briefSummary', 'No summary available.')
+        logger.info(f"Successfully retrieved trial summary for: {nct_id}")
+        return {
+            "nct_id": nct_id,
+            "title": title,
+            "summary": summary
         }

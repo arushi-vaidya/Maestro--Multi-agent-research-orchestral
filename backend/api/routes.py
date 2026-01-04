@@ -60,7 +60,7 @@ class QueryResponse(BaseModel):
     references: List[Reference]
 
 @router.post("/query", response_model=QueryResponse)
-async def process_query(request: QueryRequest):
+def process_query(request: QueryRequest):
     """
     Main query processing endpoint
     
@@ -77,7 +77,7 @@ async def process_query(request: QueryRequest):
         agent = get_master_agent()
         
         # Process query through Master Agent
-        result = await agent.process_query(request.query)
+        result = agent.process_query(request.query)
         
         logger.info(f"Query processed successfully. Insights: {len(result.get('insights', []))}")
         

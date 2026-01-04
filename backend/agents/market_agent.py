@@ -31,38 +31,40 @@ class MarketAgent:
         Always cite specific numbers and trends.
         Be concise but informative."""
     
-    async def process(self, query: str) -> Dict[str, Any]:
+    def process(self, query: str) -> Dict[str, Any]:
         """
-        Process market intelligence query
+        Process market intelligence query (mock data only)
         
         Args:
             query: User query about pharmaceutical markets
-            
+        
         Returns:
             Dict with findings, confidence, and references
         """
-        # Get relevant market data based on query keywords
         market_data = self._get_relevant_data(query)
-        
-        # Generate analysis using LLM
-        analysis_prompt = self._create_analysis_prompt(query, market_data)
-        
-        analysis = await generate_llm_response(
-            prompt=analysis_prompt,
-            system_prompt=self.get_system_prompt()
-        )
-        
-        # Extract insights and create structured response
+        # Generate a mock analysis summary
+        summary = self._generate_mock_analysis(query, market_data)
         result = {
             "agent": self.name,
             "agent_id": self.agent_id,
-            "finding": analysis,
+            "finding": summary,
             "confidence": self._calculate_confidence(query, market_data),
             "data_points": market_data,
             "references": self._generate_references(query)
         }
-        
         return result
+
+    def _generate_mock_analysis(self, query: str, market_data: Dict) -> str:
+        """
+        Generate a mock market analysis summary based on available mock data.
+        """
+        if not market_data:
+            return "No specific market data found for your query. Global pharmaceutical market size is $1.48T with a CAGR of 6.8%."
+        # Use the first matching keyword's data for summary
+        keyword = next(iter(market_data))
+        data = market_data[keyword]
+        summary = f"Therapy Area: {data.get('therapy_area', 'N/A')}. Market Size: {data.get('market_size_usd', 'N/A')}. CAGR: {data.get('cagr', 'N/A')}. Forecast 2030: {data.get('forecast_2030', 'N/A')}. Key Players: {', '.join(data.get('key_players', [])) if 'key_players' in data else 'N/A'}."
+        return summary
     
     def _get_relevant_data(self, query: str) -> Dict[str, Any]:
         """

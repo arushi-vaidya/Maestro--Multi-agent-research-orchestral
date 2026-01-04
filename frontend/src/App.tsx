@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { Search, Database, FileText, Activity, TrendingUp, AlertCircle, CheckCircle, Loader, Download, BookOpen, ExternalLink, Calendar, Award, X, Sparkles } from 'lucide-react';
 import './App.css';
 
@@ -9,13 +9,15 @@ interface Insight {
 }
 
 interface Reference {
-  type: 'patent' | 'paper' | 'clinical-trial' | 'market-report';
+  type?: 'patent' | 'paper' | 'clinical-trial' | 'market-report';
   title: string;
-  source: string;
-  date: string;
-  url: string;
-  relevance: number;
-  agentId: string;
+  source?: string;
+  date?: string;
+  url?: string;
+  relevance?: number;
+  agentId?: string;
+  nct_id?: string;
+  summary?: string;
 }
 
 interface AnalysisResults {
@@ -65,6 +67,7 @@ const App = () => {
   ];
 
   // Mock references data with agent assignments
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const generateMockReferences = (): Reference[] => [
     // Market Intelligence Agent References
     {
@@ -206,12 +209,21 @@ const App = () => {
     setResults(null);
     setSelectedAgent(null);
 
-    // Show market agent as active (Feature 1 only uses Market Agent)
-    setActiveAgents(['market']);
+    // Show clinical agent as active (Feature 1 only uses Clinical Agent)
+    setActiveAgents(['clinical']);
+
+    // Get API URL from environment variable or fallback to localhost
+    const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+    const endpoint = `${apiUrl}/api/query`;
+    
+    console.log('🚀 Starting analysis...');
+    console.log('📍 API Endpoint:', endpoint);
+    console.log('🔍 Query:', userQuery);
 
     try {
       // Call backend API
-      const response = await fetch('http://172.20.10.2:8000/api/query', {
+      console.log('📡 Sending request to backend...');
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -219,11 +231,14 @@ const App = () => {
         body: JSON.stringify({ query: userQuery }),
       });
 
+      console.log('📥 Response status:', response.status);
+
       if (!response.ok) {
         throw new Error(`Backend error: ${response.status}`);
       }
 
       const data = await response.json();
+      console.log('📦 Response data:', data);
 
       // Backend returns the correct format already
       setResults(data);
@@ -236,8 +251,9 @@ const App = () => {
         'Failed to connect to backend.\n\n' +
         'Make sure:\n' +
         '1. Backend is running: python main.py\n' +
-        '2. Backend is on: http://localhost:8000\n' +
-        '3. Check browser console for details'
+        '2. Backend is on: ' + apiUrl + '\n' +
+        '3. Check browser console for details\n\n' +
+        'Error: ' + error
       );
 
       // Reset states on error
@@ -340,12 +356,13 @@ ${results.recommendation}
 REFERENCES
 ----------
 ${results.references.map((ref, idx) => `
-${idx + 1}. [${ref.type.toUpperCase()}] ${ref.title}
-   Source: ${ref.source}
-   Date: ${ref.date}
-   URL: ${ref.url}
-   Relevance: ${ref.relevance}%
-   Agent: ${ref.agentId}
+${idx + 1}. [${ref.nct_id ? 'CLINICAL TRIAL' : (ref.type?.toUpperCase() || 'REFERENCE')}] ${ref.title}
+   ${ref.nct_id ? `NCT ID: ${ref.nct_id}` : `Source: ${ref.source || 'N/A'}`}
+   ${ref.date ? `Date: ${ref.date}` : ''}
+   ${ref.url ? `URL: ${ref.url}` : ref.nct_id ? `URL: https://clinicaltrials.gov/study/${ref.nct_id}` : ''}
+   ${ref.relevance ? `Relevance: ${ref.relevance}%` : ''}
+   ${ref.agentId ? `Agent: ${ref.agentId}` : ''}
+   ${ref.summary ? `Summary: ${ref.summary}` : ''}
 `).join('\n')}
     `.trim();
 
@@ -680,7 +697,7 @@ ${idx + 1}. [${ref.type.toUpperCase()}] ${ref.title}
                             <div className="flex items-start justify-between mb-2 gap-3">
                               <div className="flex-1 min-w-0">
                                 <span className={`text-xs font-semibold bg-gradient-to-r ${colorClasses[color as keyof typeof colorClasses]} bg-clip-text text-transparent uppercase tracking-wide`}>
-                                  {ref.type.replace('-', ' ')}
+                                  {ref.type?.replace('-', ' ') || 'Reference'}
                                 </span>
                                 <h4 className="font-semibold text-gray-900 mt-1 break-words">{ref.title}</h4>
                               </div>
@@ -782,62 +799,159 @@ ${idx + 1}. [${ref.type.toUpperCase()}] ${ref.title}
               </button>
 
               {showReferences && (
-                <div className="space-y-3 animate-fadeIn">
-                  {results.references.map((ref, idx) => {
-                    const color = getTypeColor(ref.type);
-                    const colorClasses = {
-                      purple: 'from-purple-500 to-pink-500',
-                      blue: 'from-blue-500 to-cyan-500',
-                      green: 'from-green-500 to-emerald-500',
-                      orange: 'from-orange-500 to-amber-500'
+                <div className="space-y-6 animate-fadeIn">
+                  {/* Clinical Trials Agent Section */}
+                  {results.references.filter(ref => ref.agentId === 'clinical').length > 0 && (
+                    <div className="border-2 border-green-200 rounded-2xl p-6 bg-gradient-to-br from-green-50 to-emerald-50">
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="p-3 bg-gradient-to-br from-green-500 to-emerald-500 rounded-xl shadow-lg">
+                          <Activity className="w-6 h-6 text-white" />
+                        </div>
+                        <div>
+                          <h3 className="text-xl font-bold text-gray-900">Clinical Trials Agent</h3>
+                          <p className="text-sm text-gray-600">{results.references.filter(ref => ref.agentId === 'clinical').length} clinical trials found</p>
+                        </div>
+                      </div>
+                      <div className="space-y-3">
+                        {results.references.filter(ref => ref.agentId === 'clinical').map((ref, idx) => (
+                          <div
+                            key={idx}
+                            className="border border-gray-200 rounded-xl p-4 hover:border-gray-300 hover:shadow-lg transition-all duration-300 bg-white/80 backdrop-blur-sm transform hover:scale-[1.01]"
+                          >
+                            <div className="flex items-start gap-3">
+                              <div className="p-2 bg-gradient-to-br from-green-500 to-emerald-500 rounded-xl shadow-md">
+                                <Activity className="w-4 h-4 text-white" />
+                              </div>
+                              <div className="flex-1">
+                                <div className="flex items-start justify-between mb-2">
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <span className="px-2 py-1 bg-green-100 text-green-700 rounded-md text-xs font-semibold">
+                                        {ref.nct_id}
+                                      </span>
+                                      <span className="text-xs font-semibold bg-gradient-to-r from-green-500 to-emerald-500 bg-clip-text text-transparent uppercase tracking-wide">
+                                        Clinical Trial
+                                      </span>
+                                    </div>
+                                    <h4 className="font-semibold text-gray-900 mt-1 mb-2">{ref.title}</h4>
+                                    <p className="text-sm text-gray-600">{ref.summary}</p>
+                                  </div>
+                                  <a
+                                    href={`https://clinicaltrials.gov/study/${ref.nct_id}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="ml-2 text-sm bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent hover:from-green-700 hover:to-emerald-700 flex items-center gap-1 flex-shrink-0 font-medium transform hover:scale-105 transition-transform whitespace-nowrap"
+                                  >
+                                    View Trial <ExternalLink className="w-3 h-3" />
+                                  </a>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* Other Agents Sections (Market, Patent, Trade) */}
+                  {['market', 'patent', 'trade'].map(agentId => {
+                    const agentRefs = results.references.filter(ref => ref.agentId === agentId);
+                    if (agentRefs.length === 0) return null;
+                    
+                    const agent = agents.find(a => a.id === agentId);
+                    if (!agent) return null;
+                    
+                    const colorMap: Record<string, string> = {
+                      market: 'blue',
+                      patent: 'purple',
+                      trade: 'orange'
                     };
-
+                    
+                    const gradientMap: Record<string, string> = {
+                      market: 'from-blue-500 to-cyan-500',
+                      patent: 'from-purple-500 to-pink-500',
+                      trade: 'from-orange-500 to-amber-500'
+                    };
+                    
+                    const bgMap: Record<string, string> = {
+                      market: 'from-blue-50 to-cyan-50 border-blue-200',
+                      patent: 'from-purple-50 to-pink-50 border-purple-200',
+                      trade: 'from-orange-50 to-amber-50 border-orange-200'
+                    };
+                    
                     return (
-                      <div
-                        key={idx}
-                        className="border border-gray-200 rounded-xl p-4 hover:border-gray-300 hover:shadow-lg transition-all duration-300 bg-white/50 backdrop-blur-sm transform hover:scale-[1.01] animate-slideUp"
-                        style={{ animationDelay: `${idx * 50}ms` }}
-                      >
-                        <div className="flex items-start gap-3">
-                          <div className={`p-2 bg-gradient-to-br ${colorClasses[color as keyof typeof colorClasses]} rounded-xl shadow-md`}>
-                            <div className="text-white">
-                              {getTypeIcon(ref.type)}
-                            </div>
+                      <div key={agentId} className={`border-2 rounded-2xl p-6 bg-gradient-to-br ${bgMap[agentId]}`}>
+                        <div className="flex items-center gap-3 mb-4">
+                          <div className={`p-3 bg-gradient-to-br ${gradientMap[agentId]} rounded-xl shadow-lg`}>
+                            {React.createElement(agent.icon, { className: 'w-6 h-6 text-white' })}
                           </div>
-                          <div className="flex-1">
-                            <div className="flex items-start justify-between mb-2">
-                              <div>
-                                <span className={`text-xs font-semibold bg-gradient-to-r ${colorClasses[color as keyof typeof colorClasses]} bg-clip-text text-transparent uppercase tracking-wide`}>
-                                  {ref.type.replace('-', ' ')}
-                                </span>
-                                <h4 className="font-semibold text-gray-900 mt-1">{ref.title}</h4>
-                              </div>
-                              <div className="px-2 py-1 bg-gray-100 text-gray-600 rounded-lg text-sm">
-                                {ref.relevance}% match
-                              </div>
-                            </div>
-                            <p className="text-sm text-gray-600 mb-2">{ref.source}</p>
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-3 text-xs text-gray-500">
-                                <span className="flex items-center gap-1">
-                                  <Calendar className="w-3 h-3" />
-                                  {ref.date}
-                                </span>
-                                <span>•</span>
-                                <span className="capitalize px-2 py-1 bg-indigo-100 text-indigo-700 rounded-full">
-                                  {agents.find(a => a.id === ref.agentId)?.name.split(' ')[0]}
-                                </span>
-                              </div>
-                              <a
-                                href={ref.url}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="text-sm bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent hover:from-blue-700 hover:to-cyan-700 flex items-center gap-1 font-medium transform hover:scale-105 transition-transform"
+                          <div>
+                            <h3 className="text-xl font-bold text-gray-900">{agent.name}</h3>
+                            <p className="text-sm text-gray-600">{agentRefs.length} references</p>
+                          </div>
+                        </div>
+                        <div className="space-y-3">
+                          {agentRefs.map((ref, idx) => {
+                            const colorClasses = {
+                              purple: 'from-purple-500 to-pink-500',
+                              blue: 'from-blue-500 to-cyan-500',
+                              green: 'from-green-500 to-emerald-500',
+                              orange: 'from-orange-500 to-amber-500'
+                            };
+                            
+                            return (
+                              <div
+                                key={idx}
+                                className="border border-gray-200 rounded-xl p-4 hover:border-gray-300 hover:shadow-lg transition-all duration-300 bg-white/80 backdrop-blur-sm transform hover:scale-[1.01]"
                               >
-                                View Source <ExternalLink className="w-3 h-3" />
-                              </a>
-                            </div>
-                          </div>
+                                <div className="flex items-start gap-3">
+                                  <div className={`p-2 bg-gradient-to-br ${colorClasses[colorMap[agentId] as keyof typeof colorClasses]} rounded-xl shadow-md`}>
+                                    <div className="text-white">
+                                      {getTypeIcon(ref.type)}
+                                    </div>
+                                  </div>
+                                  <div className="flex-1">
+                                    <div className="flex items-start justify-between mb-2">
+                                      <div>
+                                        {ref.type && (
+                                          <span className={`text-xs font-semibold bg-gradient-to-r ${colorClasses[colorMap[agentId] as keyof typeof colorClasses]} bg-clip-text text-transparent uppercase tracking-wide`}>
+                                            {ref.type.replace('-', ' ')}
+                                          </span>
+                                        )}
+                                        <h4 className="font-semibold text-gray-900 mt-1">{ref.title}</h4>
+                                      </div>
+                                      {ref.relevance && (
+                                        <div className="px-2 py-1 bg-gray-100 text-gray-600 rounded-lg text-sm">
+                                          {ref.relevance}% match
+                                        </div>
+                                      )}
+                                    </div>
+                                    {ref.source && <p className="text-sm text-gray-600 mb-2">{ref.source}</p>}
+                                    <div className="flex items-center justify-between">
+                                      <div className="flex items-center gap-3 text-xs text-gray-500">
+                                        {ref.date && (
+                                          <span className="flex items-center gap-1">
+                                            <Calendar className="w-3 h-3" />
+                                            {ref.date}
+                                          </span>
+                                        )}
+                                      </div>
+                                      {ref.url && (
+                                        <a
+                                          href={ref.url}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="text-sm bg-gradient-to-r from-blue-600 to-cyan-600 bg-clip-text text-transparent hover:from-blue-700 hover:to-cyan-700 flex items-center gap-1 font-medium transform hover:scale-105 transition-transform"
+                                        >
+                                          View Source <ExternalLink className="w-3 h-3" />
+                                        </a>
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
                     );
