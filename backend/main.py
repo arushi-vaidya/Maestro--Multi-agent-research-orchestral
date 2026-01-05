@@ -56,8 +56,8 @@ async def health_check():
     return {
         "status": "healthy",
         "agents": {
-            "market": "active",
-            "clinical": "pending",  # Not yet implemented
+            "market": "pending",
+            "clinical": "active",  # Not yet implemented
             "patent": "pending",    # Not yet implemented
             "trade": "pending"      # Not yet implemented
         }
