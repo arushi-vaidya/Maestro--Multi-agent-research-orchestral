@@ -50,7 +50,7 @@ class ClinicalAgent:
             logger.info(f"Falling back to original query: '{query}'")
             return query
 
-    def search_trials(self, keywords: str, page_size: int = 5) -> dict:
+    def search_trials(self, keywords: str, page_size: int = 100000) -> dict:
         logger.info(f"Searching clinical trials for keywords: '{keywords}' (page_size={page_size})")
         url = "https://clinicaltrials.gov/api/v2/studies"
         params = {"query.term": keywords, "pageSize": page_size}
@@ -154,11 +154,17 @@ Trial {nct_id}:
         return self._generate_structured_fallback(keywords, trials_data)
     
     def _format_summary(self, summary: str) -> str:
-        """Post-process summary to ensure proper formatting with line breaks"""
-        # Ensure section headers have proper spacing
-        summary = summary.replace('\n##', '\n\n##')
-        # Ensure there's spacing after headers
-        summary = summary.replace('##', '##\n')
+        """Post-process summary to remove markdown formatting and ensure proper formatting"""
+        # Remove all markdown formatting characters
+        summary = summary.replace('##', '')
+        summary = summary.replace('**', '')
+        summary = summary.replace('__', '')
+        summary = summary.replace('*', '')
+        summary = summary.replace('_', '')
+        summary = summary.replace('`', '')
+        # Remove bullet points
+        summary = summary.replace('- ', '')
+        summary = summary.replace('• ', '')
         # Clean up excessive blank lines (more than 3)
         while '\n\n\n\n' in summary:
             summary = summary.replace('\n\n\n\n', '\n\n\n')
@@ -213,12 +219,12 @@ Trial {nct_id}:
         # Build comprehensive structured summary
         summary_parts = []
         
-        summary_parts.append("## COMPREHENSIVE CLINICAL TRIALS ANALYSIS")
+        summary_parts.append("COMPREHENSIVE CLINICAL TRIALS ANALYSIS")
         summary_parts.append("")
         summary_parts.append("")
         
         # 1. Overview
-        summary_parts.append("## 1. OVERVIEW")
+        summary_parts.append("1. OVERVIEW")
         summary_parts.append("")
         summary_parts.append(f"* Total Clinical Trials Found: {total_trials}")
         summary_parts.append(f"* Search Keywords: {keywords}")
@@ -230,7 +236,7 @@ Trial {nct_id}:
         summary_parts.append("")
         
         # 2. Therapeutic Areas
-        summary_parts.append("## 2. THERAPEUTIC AREAS AND CONDITIONS")
+        summary_parts.append("2. THERAPEUTIC AREAS AND CONDITIONS")
         summary_parts.append("")
         if conditions:
             summary_parts.append("* Primary Conditions Being Studied:")
@@ -242,7 +248,7 @@ Trial {nct_id}:
         summary_parts.append("")
         
         # 3. Intervention Approaches
-        summary_parts.append("## 3. INTERVENTION MECHANISMS AND APPROACHES")
+        summary_parts.append("3. INTERVENTION MECHANISMS AND APPROACHES")
         summary_parts.append("")
         if interventions:
             summary_parts.append("* Intervention Types Being Investigated:")
@@ -255,7 +261,7 @@ Trial {nct_id}:
         summary_parts.append("")
         
         # 4. Clinical Trial Phases
-        summary_parts.append("## 4. CLINICAL TRIAL PHASES AND DEVELOPMENT PIPELINE")
+        summary_parts.append("4. CLINICAL TRIAL PHASES AND DEVELOPMENT PIPELINE")
         summary_parts.append("")
         if phases:
             summary_parts.append("* Phase Distribution:")
@@ -268,7 +274,7 @@ Trial {nct_id}:
         summary_parts.append("")
         
         # 5. Trial Status
-        summary_parts.append("## 5. KEY FINDINGS AND PATTERNS")
+        summary_parts.append("5. KEY FINDINGS AND PATTERNS")
         summary_parts.append("")
         summary_parts.append("* Trial Status Distribution:")
         if statuses:
@@ -283,7 +289,7 @@ Trial {nct_id}:
         summary_parts.append("")
         
         # 6. Methodological Approaches
-        summary_parts.append("## 6. METHODOLOGICAL APPROACHES")
+        summary_parts.append("6. METHODOLOGICAL APPROACHES")
         summary_parts.append("")
         if study_types:
             summary_parts.append("* Study Design Types:")
@@ -293,7 +299,7 @@ Trial {nct_id}:
         summary_parts.append("")
         
         # 7. Clinical Implications
-        summary_parts.append("## 7. IMPLICATIONS FOR CLINICAL PRACTICE")
+        summary_parts.append("7. IMPLICATIONS FOR CLINICAL PRACTICE")
         summary_parts.append("")
         summary_parts.append(f"* The {total_trials} trials identified represent significant research investment in {keywords}")
         summary_parts.append("* Active trials suggest evolving treatment paradigms and emerging therapeutic options")
@@ -303,7 +309,7 @@ Trial {nct_id}:
         summary_parts.append("")
         
         # 8. Summary
-        summary_parts.append("## 8. SUMMARY AND CONCLUSIONS")
+        summary_parts.append("8. SUMMARY AND CONCLUSIONS")
         summary_parts.append("")
         summary_parts.append(f"This analysis identified {total_trials} clinical trials related to {keywords}. ")
         summary_parts.append("")
@@ -319,7 +325,7 @@ Trial {nct_id}:
         
         # Add trial list
         summary_parts.append("")
-        summary_parts.append("## DETAILED TRIAL LIST")
+        summary_parts.append("DETAILED TRIAL LIST")
         summary_parts.append("")
         for idx, study in enumerate(studies, 1):
             try:
@@ -338,7 +344,7 @@ Trial {nct_id}:
     def _generate_with_gemini(self, keywords: str, total_trials: int, trials_text: str, trials_data: dict) -> str:
         """Generate summary using Google Gemini API"""
         logger.info("Attempting to generate summary with Gemini")
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={self.gemini_api_key}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={self.gemini_api_key}"
         headers = {"Content-Type": "application/json"}
         
         prompt = f"""You are a medical research analyst conducting a comprehensive literature review. Analyze the following clinical trials data and provide a detailed, well-structured summary suitable for academic literature review.
@@ -349,88 +355,55 @@ Total Trials Found: {total_trials}
 Clinical Trials Data (showing up to 100 trials):
 {trials_text}
 
-IMPORTANT FORMATTING INSTRUCTIONS:
-- Use "## " (double hash with space) for main section headers
-- Add TWO blank lines before each new section
-- Use "* " or "- " for bullet points
-- Add ONE blank line between bullet points or paragraphs within sections
+CRITICAL FORMATTING RULES - FOLLOW EXACTLY:
+- OUTPUT ONLY PLAIN TEXT - NO MARKDOWN FORMATTING
+- NO asterisks, NO hashtags, NO bold, NO italics, NO special formatting characters
+- NO bullet points using asterisks or dashes
+- For headings: Write them in UPPERCASE followed by a blank line
+- After each heading, leave ONE blank line, then write the content
+- Use simple sentences and paragraphs
+- Start each point on a new line without any special characters
 - Be extremely detailed and specific about mechanisms, findings, and clinical data
 - Include specific trial IDs (NCT numbers) when discussing trials
 - Discuss molecular mechanisms, drug targets, and biological pathways in detail
 
 Provide a comprehensive literature review summary with the following structure:
 
-## COMPREHENSIVE CLINICAL TRIALS ANALYSIS
+COMPREHENSIVE CLINICAL TRIALS ANALYSIS
 
+1. OVERVIEW
 
-## 1. OVERVIEW
+Total number of trials found and overall scope. Geographic and temporal distribution of trials. Key research institutions and sponsors involved. Relevance to the search keywords.
 
-* Total number of trials found: [specify number]
-* Overall scope and relevance to the search keywords
-* Geographic and temporal distribution of trials
-* Key research institutions and sponsors involved
+2. THERAPEUTIC AREAS AND CONDITIONS
 
+Primary diseases and conditions being studied with prevalence data. Disease classifications and subtypes being targeted. Emerging therapeutic targets and biomarkers. Patient populations and disease severity levels.
 
-## 2. THERAPEUTIC AREAS AND CONDITIONS
+3. INTERVENTION MECHANISMS AND APPROACHES
 
-* Primary diseases and conditions being studied with prevalence data
-* Disease classifications and subtypes being targeted
-* Emerging therapeutic targets and biomarkers
-* Patient populations and disease severity levels
+Detailed analysis of intervention types including drugs, biologics, devices, and gene therapy. Specific mechanisms of action being investigated including molecular pathways, targets, and binding sites. Novel versus established therapeutic approaches with comparative analysis. Combination therapies and scientific rationale. Dose regimens and administration routes.
 
+4. CLINICAL TRIAL PHASES AND DEVELOPMENT PIPELINE
 
-## 3. INTERVENTION MECHANISMS AND APPROACHES
+Distribution across phases including Phase I, II, III, and IV with specific numbers. Development stage analysis and progression patterns. Trial status including recruiting, active, and completed with completion rates. Success indicators and trial outcomes where available.
 
-* Detailed analysis of intervention types (drugs, biologics, devices, gene therapy, etc.)
-* Specific mechanisms of action being investigated (molecular pathways, targets, binding sites)
-* Novel vs. established therapeutic approaches with comparative analysis
-* Combination therapies and scientific rationale
-* Dose regimens and administration routes
+5. KEY FINDINGS AND PATTERNS
 
+Common themes across trials. Innovative approaches or breakthrough therapies identified. Safety and efficacy trends. Gaps in current research. Convergence of evidence across multiple trials.
 
-## 4. CLINICAL TRIAL PHASES AND DEVELOPMENT PIPELINE
+6. METHODOLOGICAL APPROACHES
 
-* Distribution across phases (Phase I, II, III, IV) with specific numbers
-* Development stage analysis and progression patterns
-* Trial status (recruiting, active, completed) with completion rates
-* Success indicators and trial outcomes where available
+Study designs being employed including randomized, controlled, and open-label trials. Patient populations and specific inclusion and exclusion criteria. Primary and secondary endpoints. Outcome measures and assessment tools. Statistical methods and sample sizes.
 
+7. IMPLICATIONS FOR CLINICAL PRACTICE
 
-## 5. KEY FINDINGS AND PATTERNS
+Potential impact on treatment paradigms and standard of care. Emerging evidence for new therapeutic options. Clinical relevance and translational potential. Areas requiring further investigation. Regulatory and approval considerations.
 
-* Common themes across trials
-* Innovative approaches or breakthrough therapies identified
-* Safety and efficacy trends
-* Gaps in current research
-* Convergence of evidence across multiple trials
+8. SUMMARY AND CONCLUSIONS
 
+Synthesis of major insights from the trial landscape. Research landscape overview and current state of the field. Future directions and promising areas. Clinical and translational implications.
 
-## 6. METHODOLOGICAL APPROACHES
-
-* Study designs being employed (randomized, controlled, open-label, etc.)
-* Patient populations and specific inclusion/exclusion criteria
-* Primary and secondary endpoints
-* Outcome measures and assessment tools
-* Statistical methods and sample sizes
-
-
-## 7. IMPLICATIONS FOR CLINICAL PRACTICE
-
-* Potential impact on treatment paradigms and standard of care
-* Emerging evidence for new therapeutic options
-* Clinical relevance and translational potential
-* Areas requiring further investigation
-* Regulatory and approval considerations
-
-
-## 8. SUMMARY AND CONCLUSIONS
-
-* Synthesis of major insights from the trial landscape
-* Research landscape overview and current state of the field
-* Future directions and promising areas
-* Clinical and translational implications
-
-Provide extensive detail with specific examples, trial IDs, mechanisms, and clinical data throughout."""
+REMEMBER: Output only plain text with headings in UPPERCASE, one blank line after each heading, then content. No markdown, no asterisks, no special formatting. Write in clear paragraphs and sentences."""
 
         payload = {
             "contents": [{
@@ -440,7 +413,7 @@ Provide extensive detail with specific examples, trial IDs, mechanisms, and clin
             }],
             "generationConfig": {
                 "temperature": 0.7,
-                "maxOutputTokens": 8000,
+                "maxOutputTokens": 16000,
                 "topP": 0.95,
                 "topK": 40
             }
@@ -480,59 +453,54 @@ Total Trials Found: {total_trials}
 Clinical Trials Data:
 {trials_text}
 
-IMPORTANT FORMATTING:
-- Use "## " for section headers
-- Add TWO blank lines before each new section  
-- Use bullet points with "* " or "- "
+CRITICAL FORMATTING RULES - FOLLOW EXACTLY:
+- OUTPUT ONLY PLAIN TEXT - NO MARKDOWN FORMATTING
+- NO asterisks, NO hashtags, NO bold, NO italics, NO special formatting characters
+- NO bullet points using asterisks or dashes
+- For headings: Write them in UPPERCASE followed by a blank line
+- After each heading, leave ONE blank line, then write the content
+- Use simple sentences and paragraphs
+- Start each point on a new line without any special characters
 - Be extremely detailed about mechanisms, targets, and clinical data
 - Include specific NCT IDs when referencing trials
 
 Provide comprehensive analysis with these sections:
 
-## COMPREHENSIVE CLINICAL TRIALS ANALYSIS
+COMPREHENSIVE CLINICAL TRIALS ANALYSIS
 
+1. OVERVIEW
 
-## 1. OVERVIEW
+Total trials, scope, geographic distribution. Relevance to search keywords.
 
-* Total trials, scope, geographic distribution
+2. THERAPEUTIC AREAS AND CONDITIONS
 
+Diseases, conditions, patient populations.
 
-## 2. THERAPEUTIC AREAS AND CONDITIONS  
+3. INTERVENTION MECHANISMS AND APPROACHES
 
-* Diseases, conditions, patient populations
+Detailed mechanisms of action, molecular targets, pathways. Drug types, delivery methods, combination therapies.
 
+4. CLINICAL TRIAL PHASES
 
-## 3. INTERVENTION MECHANISMS AND APPROACHES
+Phase distribution, development pipeline.
 
-* Detailed mechanisms of action, molecular targets, pathways
-* Drug types, delivery methods, combination therapies
+5. KEY FINDINGS AND PATTERNS
 
+Common themes, breakthrough therapies, efficacy data.
 
-## 4. CLINICAL TRIAL PHASES
+6. METHODOLOGICAL APPROACHES
 
-* Phase distribution, development pipeline
+Study designs, endpoints, patient criteria.
 
+7. CLINICAL IMPLICATIONS
 
-## 5. KEY FINDINGS AND PATTERNS
+Impact on treatment paradigms.
 
-* Common themes, breakthrough therapies, efficacy data
+8. SUMMARY AND CONCLUSIONS
 
+Major insights, future directions.
 
-## 6. METHODOLOGICAL APPROACHES
-
-* Study designs, endpoints, patient criteria
-
-
-## 7. CLINICAL IMPLICATIONS
-
-* Impact on treatment paradigms
-
-
-## 8. SUMMARY AND CONCLUSIONS
-
-* Major insights, future directions
-
-Be comprehensive and specific with mechanisms and clinical data."""
+REMEMBER: Output only plain text with headings in UPPERCASE, one blank line after each heading, then content. No markdown, no asterisks, no special formatting."""
 
         payload = {
             "model": "llama-3.1-70b-versatile",  # Using larger model for better analysis
@@ -547,7 +515,7 @@ Be comprehensive and specific with mechanisms and clinical data."""
                 }
             ],
             "temperature": 0.7,
-            "max_tokens": 6000  # Increased for comprehensive output
+            "max_tokens": 8000  # Increased for comprehensive output
         }
         
         try:
