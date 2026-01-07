@@ -34,16 +34,18 @@ class ConfidenceScorer:
         query: str,
         web_results: List[Dict[str, Any]],
         rag_results: List[Dict[str, Any]],
-        sections: Dict[str, str]
+        sections: Dict[str, str],
+        coherence_boost: float = 0.0
     ) -> Dict[str, Any]:
         """
         Calculate comprehensive confidence score
 
         Args:
             query: User query
-            web_results: Web search results
+            web_results: Web search results (with domain_tier and domain_weight)
             rag_results: RAG retrieval results
             sections: Generated content sections
+            coherence_boost: Additional boost from forecast reconciliation (0.0-0.15)
 
         Returns:
             Confidence analysis with score, breakdown, and explanation
@@ -53,6 +55,9 @@ class ConfidenceScorer:
         content_coherence = self._calculate_content_coherence(web_results, rag_results, sections)
         synthesis_success = self._calculate_synthesis_success(sections, web_results, rag_results)
         coverage_completeness = self._calculate_coverage_completeness(query, sections)
+
+        # Apply coherence boost from forecast reconciliation
+        content_coherence = min(1.0, content_coherence + coherence_boost)
 
         # Weighted combination
         final_score = (
@@ -100,14 +105,22 @@ class ConfidenceScorer:
         rag_results: List[Dict]
     ) -> float:
         """
-        Measures quality and diversity of retrieved sources
+        Measures quality and diversity of retrieved sources with TIERED WEIGHTING
 
-        RAG: Up to 0.6 (authoritative internal knowledge)
-        Web: Up to 0.4 (corroboration and freshness)
+        NEW: Tier-based weighting for web sources
+        - Tier 1 (IQVIA, EvaluatePharma): 1.5x weight
+        - Tier 2 (Reuters, pharma news): 1.0x weight
+        - Tier 3 (forums, blogs): 0.4x weight
+
+        NEW: RAG-only boost when internal agreement is high
+        - If ≥3 RAG docs with avg relevance ≥0.8, boost by 0.15
+
+        RAG: Up to 0.6 base (authoritative internal knowledge)
+        Web: Up to 0.4 base (corroboration and freshness)
         """
         score = 0.0
 
-        # RAG component (up to 0.6)
+        # RAG component (up to 0.6 + potential 0.15 boost)
         if rag_results:
             # Normalize relevance scores (Chroma returns distance, convert to similarity)
             normalized_relevances = [
@@ -121,20 +134,21 @@ class ConfidenceScorer:
             rag_quality = avg_rag_relevance * 0.7 + rag_count_bonus * 0.3
 
             score += rag_quality * 0.6
+
+            # NEW: RAG-only confidence boost (if high internal agreement)
+            if len(rag_results) >= 3 and avg_rag_relevance >= 0.8:
+                rag_only_boost = 0.15
+                score += rag_only_boost
+                logger.info(f"RAG-only boost applied: +{rag_only_boost:.2f} (≥3 docs, high agreement)")
+
             logger.debug(f"RAG quality: {rag_quality:.3f} (avg_rel={avg_rag_relevance:.3f}, count={len(rag_results)})")
 
-        # Web component (up to 0.4)
+        # Web component (up to 0.4) with TIER WEIGHTING
         if web_results:
-            # Web provides corroboration, not primary trust
-            web_count_bonus = min(len(web_results) / 8.0, 1.0)
-
-            # Check recency (bonus for fresh data)
-            fresh_count = sum(1 for r in web_results if self._is_recent(r.get('date', '')))
-            freshness_bonus = min(fresh_count / 3.0, 1.0)
-
-            web_quality = web_count_bonus * 0.6 + freshness_bonus * 0.4
-            score += web_quality * 0.4
-            logger.debug(f"Web quality: {web_quality:.3f} (count={len(web_results)}, fresh={fresh_count})")
+            # NEW: Apply domain tier weighting
+            weighted_web_score = self._calculate_weighted_web_quality(web_results)
+            score += weighted_web_score * 0.4
+            logger.debug(f"Weighted web quality: {weighted_web_score:.3f}")
 
         # Penalty if NO sources at all
         if not rag_results and not web_results:
@@ -142,6 +156,63 @@ class ConfidenceScorer:
             return 0.0
 
         return min(score, 1.0)
+
+    def _calculate_weighted_web_quality(self, web_results: List[Dict]) -> float:
+        """
+        Calculate web quality using domain tier weighting
+
+        NEW: Applies source weights from domain tier:
+        - Tier 1: 1.5x weight (premium sources)
+        - Tier 2: 1.0x weight (reputable sources)
+        - Tier 3: 0.4x weight (low-signal sources)
+
+        Returns:
+            Quality score 0.0-1.0
+        """
+        if not web_results:
+            return 0.0
+
+        # Calculate weighted score
+        total_weight = 0.0
+        weighted_sum = 0.0
+
+        for result in web_results:
+            domain_weight = result.get('domain_weight', 1.0)
+            total_weight += domain_weight
+            weighted_sum += domain_weight
+
+        # Normalize
+        if total_weight > 0:
+            avg_weighted_quality = weighted_sum / total_weight
+        else:
+            avg_weighted_quality = 0.5
+
+        # Count tier distribution
+        tier1_count = sum(1 for r in web_results if r.get('domain_tier') == 1)
+        tier2_count = sum(1 for r in web_results if r.get('domain_tier') == 2)
+        tier3_count = sum(1 for r in web_results if r.get('domain_tier') == 3)
+
+        # Bonus for having Tier 1 sources
+        tier1_bonus = min(tier1_count / 2.0, 0.3)  # Up to 0.3 bonus for 2+ Tier 1 sources
+
+        # Check recency (bonus for fresh data)
+        fresh_count = sum(1 for r in web_results if self._is_recent(r.get('date', '')))
+        freshness_bonus = min(fresh_count / 3.0, 0.2)
+
+        # Combine
+        web_quality = (
+            avg_weighted_quality * 0.5 +
+            tier1_bonus +
+            freshness_bonus
+        )
+
+        logger.info(
+            f"Web quality breakdown: "
+            f"Tier1={tier1_count}, Tier2={tier2_count}, Tier3={tier3_count}, "
+            f"fresh={fresh_count}, quality={web_quality:.3f}"
+        )
+
+        return min(web_quality, 1.0)
 
     def _calculate_content_coherence(
         self,
@@ -433,10 +504,16 @@ class ConfidenceScorer:
     def _determine_confidence_level(self, score: float) -> str:
         """
         Convert numeric score to confidence level label
+
+        NEW CALIBRATED THRESHOLDS (per requirements):
+        - < 0.50 → Low (insufficient evidence)
+        - 0.50–0.65 → Medium (partial corroboration)
+        - 0.65–0.80 → High (multi-source agreement)
+        - > 0.80 → Very High (strong corroboration + coherence)
         """
-        if score >= 0.85:
+        if score >= 0.80:
             return "very_high"
-        elif score >= 0.70:
+        elif score >= 0.65:
             return "high"
         elif score >= 0.50:
             return "medium"

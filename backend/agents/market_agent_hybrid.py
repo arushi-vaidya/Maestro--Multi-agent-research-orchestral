@@ -56,6 +56,14 @@ except ImportError:
     SECTION_SYNTHESIS_AVAILABLE = False
     print("⚠️  Section synthesis not available. Using legacy JSON synthesis.")
 
+# Import Forecast Reconciliation (new)
+try:
+    from utils.forecast_reconciliation import ForecastReconciler
+    FORECAST_RECONCILIATION_AVAILABLE = True
+except ImportError:
+    FORECAST_RECONCILIATION_AVAILABLE = False
+    print("⚠️  Forecast reconciliation not available. Using without reconciliation.")
+
 logger = logging.getLogger(__name__)
 
 
@@ -144,6 +152,13 @@ class MarketAgentHybrid:
         else:
             self.section_synthesizer = None
 
+        # Initialize forecast reconciler (new)
+        if FORECAST_RECONCILIATION_AVAILABLE:
+            self.forecast_reconciler = ForecastReconciler()
+            logger.info("✅ Forecast reconciliation initialized")
+        else:
+            self.forecast_reconciler = None
+
         # Log final configuration
         retrieval_methods = []
         if self.use_rag:
@@ -209,13 +224,22 @@ class MarketAgentHybrid:
         # Step 5: LLM Synthesis
         sections = self._synthesize_intelligence(query, fused_context, web_results, rag_results)
 
+        # Step 5.5: Forecast Reconciliation (NEW)
+        coherence_boost = 0.0
+        if self.forecast_reconciler:
+            sections, coherence_boost = self.forecast_reconciler.reconcile_forecasts(
+                sections, web_results, rag_results
+            )
+            logger.info(f"   🔄 Forecast reconciliation applied (coherence boost: +{coherence_boost:.2f})")
+
         # Step 6: Calculate Comprehensive Confidence
         if self.confidence_scorer:
             confidence_analysis = self.confidence_scorer.calculate_confidence(
                 query=query,
                 web_results=web_results,
                 rag_results=rag_results,
-                sections=sections
+                sections=sections,
+                coherence_boost=coherence_boost  # Pass reconciliation boost
             )
         else:
             # Fallback to simple confidence
@@ -363,30 +387,33 @@ Example output: GLP-1 market size, Novo Nordisk revenue, diabetes drugs 2024"""
             return [query]
 
     def _retrieve_from_web(self, keywords: List[str], top_k: int) -> List[Dict[str, Any]]:
-        """Retrieve fresh market data from web search"""
-        all_results = []
+        """
+        Retrieve fresh market data from web search using multi-query approach
 
-        for keyword in keywords[:2]:  # Limit to first 2 keywords to avoid rate limits
-            try:
-                results = self.web_search.search(
-                    query=f"{keyword} pharmaceutical market",
-                    num_results=top_k // len(keywords[:2]),
-                    time_filter="year"  # Prefer recent results
-                )
-                all_results.extend(results)
-            except Exception as e:
-                logger.error(f"Web search failed for '{keyword}': {e}")
+        New approach (vs legacy):
+        - Uses 3-5 keyword queries per request (was 1-2)
+        - Applies domain filtering and weighting
+        - Prioritizes Tier 1 pharma intelligence sources
+        - Better deduplication and ranking
+        """
+        if not keywords:
+            return []
 
-        # Deduplicate by URL
-        seen_urls = set()
-        unique_results = []
-        for result in all_results:
-            url = result.get("url", "")
-            if url and url not in seen_urls:
-                seen_urls.add(url)
-                unique_results.append(result)
+        # Use the new multi-query search method
+        try:
+            results = self.web_search.search_multi_query(
+                queries=keywords[:5],  # Use up to 5 keywords (was 2)
+                num_results_per_query=max(3, top_k // len(keywords[:5])),
+                time_filter="year"  # Prefer recent results
+            )
 
-        return unique_results[:top_k]
+            # Results are already deduplicated and weighted by search_multi_query
+            logger.info(f"Web search retrieved {len(results)} results from {len(keywords[:5])} queries")
+            return results[:top_k]
+
+        except Exception as e:
+            logger.error(f"Multi-query web search failed: {e}")
+            return []
 
     def _retrieve_from_rag(self, query: str, top_k: int) -> List[Dict[str, Any]]:
         """Retrieve historical context from internal RAG"""

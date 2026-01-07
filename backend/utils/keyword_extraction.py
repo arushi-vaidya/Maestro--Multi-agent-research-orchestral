@@ -64,9 +64,10 @@ class KeywordExtractor:
         Validate keyword quality
 
         Rejects:
-        - Keywords too long (>8 words)
+        - Keywords too long (>5 words per requirement)
         - Keywords containing question words
         - Empty keywords
+        - Keywords with question marks
         """
         if not keywords:
             return False
@@ -75,7 +76,7 @@ class KeywordExtractor:
             'what', 'is', 'are', 'how', 'when', 'where', 'why',
             'which', 'who', 'whom', 'whose', 'does', 'do', 'did',
             'can', 'could', 'will', 'would', 'should', 'tell', 'me',
-            'about', 'the'
+            'about', 'the', 'a', 'an'
         ]
 
         for kw in keywords:
@@ -83,18 +84,32 @@ class KeywordExtractor:
 
             # Empty keyword
             if not kw_lower:
+                logger.debug(f"Keyword is empty")
                 return False
 
-            # Too long (likely a full sentence)
-            if len(kw_lower.split()) > 8:
-                logger.debug(f"Keyword too long: {kw}")
+            # Contains question mark (definitely a question, not a keyword)
+            if '?' in kw_lower:
+                logger.debug(f"Keyword contains question mark: {kw}")
                 return False
 
-            # Contains question words (not focused enough)
-            if any(qw in kw_lower.split() for qw in question_words):
-                logger.debug(f"Keyword contains question word: {kw}")
+            # Too long (>5 words per requirements)
+            word_count = len(kw_lower.split())
+            if word_count > 5:
+                logger.debug(f"Keyword too long ({word_count} words): {kw}")
                 return False
 
+            # Too short (single stopword)
+            if word_count == 1 and kw_lower in question_words:
+                logger.debug(f"Keyword is single stopword: {kw}")
+                return False
+
+            # Contains question words at the start (not focused enough)
+            first_word = kw_lower.split()[0]
+            if first_word in question_words[:13]:  # Question words only (not 'the', 'a', etc.)
+                logger.debug(f"Keyword starts with question word: {kw}")
+                return False
+
+        logger.info(f"Keywords validated successfully: {keywords}")
         return True
 
     def _generate_fallback_keywords(self, query: str) -> List[str]:

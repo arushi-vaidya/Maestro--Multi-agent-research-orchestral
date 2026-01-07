@@ -24,6 +24,26 @@ class WebSearchEngine:
     Supports multiple search APIs with fallbacks
     """
 
+    # Tier 1: Premium pharma market intelligence sources (weight: 1.5x)
+    TIER1_DOMAINS = [
+        'iqvia.com', 'gminsights.com', 'evaluatepharma.com',
+        'coherentmarketinsights.com', 'fiercepharma.com',
+        'marketresearch.com', 'marketwatch.com', 'bloomberg.com'
+    ]
+
+    # Tier 2: Reputable news and research (weight: 1.0x)
+    TIER2_DOMAINS = [
+        'reuters.com', 'pharmavoice.com', 'biopharmadive.com',
+        'pharmaceutical-technology.com', 'statnews.com',
+        'labiotech.eu', 'nature.com', 'sciencedirect.com'
+    ]
+
+    # Tier 3: Low-signal sources (weight: 0.4x) - detected via patterns
+    TIER3_PATTERNS = [
+        'forum', 'reddit', 'quora', 'yahoo.answers',
+        'wiki', 'blog', 'medium.com'
+    ]
+
     def __init__(self, api_key: Optional[str] = None, search_provider: str = "serpapi"):
         """
         Initialize web search engine
@@ -257,6 +277,114 @@ class WebSearchEngine:
             text = re.sub(pattern, '', text, flags=re.IGNORECASE)
 
         return text.strip()
+
+    def get_domain_tier(self, url: str) -> int:
+        """
+        Classify URL into quality tiers for confidence scoring
+
+        Returns:
+            1 = Tier 1 (premium sources, weight 1.5x)
+            2 = Tier 2 (reputable sources, weight 1.0x)
+            3 = Tier 3 (low-signal sources, weight 0.4x)
+        """
+        url_lower = url.lower()
+
+        # Check Tier 1 domains
+        for domain in self.TIER1_DOMAINS:
+            if domain in url_lower:
+                return 1
+
+        # Check Tier 2 domains
+        for domain in self.TIER2_DOMAINS:
+            if domain in url_lower:
+                return 2
+
+        # Check Tier 3 patterns
+        for pattern in self.TIER3_PATTERNS:
+            if pattern in url_lower:
+                return 3
+
+        # Default to Tier 2 if unknown
+        return 2
+
+    def get_domain_weight(self, url: str) -> float:
+        """
+        Get confidence weight multiplier for a URL based on domain tier
+
+        Returns:
+            1.5 for Tier 1, 1.0 for Tier 2, 0.4 for Tier 3
+        """
+        tier = self.get_domain_tier(url)
+        if tier == 1:
+            return 1.5
+        elif tier == 2:
+            return 1.0
+        else:  # tier == 3
+            return 0.4
+
+    def search_multi_query(
+        self,
+        queries: List[str],
+        num_results_per_query: int = 5,
+        time_filter: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Perform multi-query web search with deduplication and domain weighting
+
+        This method performs multiple searches (one per query) and combines results
+        intelligently:
+        - Deduplicates by URL
+        - Prioritizes Tier 1 domains
+        - Filters out low-quality sources
+
+        Args:
+            queries: List of search queries (3-5 recommended)
+            num_results_per_query: Results per query (default 5)
+            time_filter: Time filter ('day', 'week', 'month', 'year', None)
+
+        Returns:
+            Combined, deduplicated, and weighted search results
+        """
+        all_results = []
+        seen_urls = set()
+
+        for query in queries:
+            try:
+                results = self.search(
+                    query=query,
+                    num_results=num_results_per_query,
+                    time_filter=time_filter
+                )
+
+                # Add domain tier and weight to each result
+                for result in results:
+                    url = result.get('url', '')
+                    if url and url not in seen_urls:
+                        seen_urls.add(url)
+                        result['domain_tier'] = self.get_domain_tier(url)
+                        result['domain_weight'] = self.get_domain_weight(url)
+                        all_results.append(result)
+
+            except Exception as e:
+                logger.error(f"Multi-query search failed for '{query}': {e}")
+                continue
+
+        # Sort by domain tier (Tier 1 first) and recency
+        all_results.sort(
+            key=lambda r: (
+                r.get('domain_tier', 3),  # Lower tier number = higher priority
+                -len(r.get('date', ''))   # Longer date strings often indicate more recent
+            )
+        )
+
+        logger.info(
+            f"Multi-query search: {len(all_results)} unique results "
+            f"(Tier 1: {sum(1 for r in all_results if r.get('domain_tier') == 1)}, "
+            f"Tier 2: {sum(1 for r in all_results if r.get('domain_tier') == 2)}, "
+            f"Tier 3: {sum(1 for r in all_results if r.get('domain_tier') == 3)})"
+        )
+
+        return all_results
 
 
 # Example usage
