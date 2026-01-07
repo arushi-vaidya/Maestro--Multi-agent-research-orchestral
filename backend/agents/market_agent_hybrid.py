@@ -40,6 +40,22 @@ except ImportError:
     CONFIDENCE_SCORING_AVAILABLE = False
     print("⚠️  Confidence scoring not available. Using simple fallback.")
 
+# Import Keyword Extraction (new)
+try:
+    from utils.keyword_extraction import KeywordExtractor
+    KEYWORD_EXTRACTION_AVAILABLE = True
+except ImportError:
+    KEYWORD_EXTRACTION_AVAILABLE = False
+    print("⚠️  Keyword extraction not available. Using simple fallback.")
+
+# Import Section Synthesis (new)
+try:
+    from utils.section_synthesis import SectionSynthesizer
+    SECTION_SYNTHESIS_AVAILABLE = True
+except ImportError:
+    SECTION_SYNTHESIS_AVAILABLE = False
+    print("⚠️  Section synthesis not available. Using legacy JSON synthesis.")
+
 logger = logging.getLogger(__name__)
 
 
@@ -113,6 +129,20 @@ class MarketAgentHybrid:
             logger.info("✅ Confidence scoring initialized")
         else:
             self.confidence_scorer = None
+
+        # Initialize keyword extractor (new)
+        if KEYWORD_EXTRACTION_AVAILABLE:
+            self.keyword_extractor = KeywordExtractor()
+            logger.info("✅ Keyword extraction initialized")
+        else:
+            self.keyword_extractor = None
+
+        # Initialize section synthesizer (new)
+        if SECTION_SYNTHESIS_AVAILABLE:
+            self.section_synthesizer = SectionSynthesizer()
+            logger.info("✅ Section synthesis initialized")
+        else:
+            self.section_synthesizer = None
 
         # Log final configuration
         retrieval_methods = []
@@ -253,7 +283,52 @@ class MarketAgentHybrid:
 
     def _extract_search_keywords(self, query: str) -> List[str]:
         """
-        Extract concise search keywords from query using LLM
+        Extract concise search keywords from query using LLM + deterministic fallback
+
+        New approach:
+        1. Try LLM extraction
+        2. Validate keywords (reject >8 words, question words)
+        3. Fall back to deterministic entity-based extraction
+        """
+        if not self.keyword_extractor:
+            # Legacy fallback if new module unavailable
+            return self._extract_search_keywords_legacy(query)
+
+        # Try LLM extraction first
+        llm_keywords = None
+        try:
+            prompt = f"""Extract 2-4 concise search keywords for a web search about this market intelligence query:
+
+Query: {query}
+
+Return ONLY the keywords as a comma-separated list, nothing else.
+Focus on: therapy areas, drug names, companies, market terms.
+
+Example output: GLP-1 market size, Novo Nordisk revenue, diabetes drugs 2024"""
+
+            response = generate_llm_response(
+                prompt=prompt,
+                system_prompt="You are a search keyword extractor. Return only keywords, no explanations.",
+                temperature=0.2,
+                max_tokens=100
+            )
+
+            # Parse keywords
+            llm_keywords = [k.strip() for k in response.split(",") if k.strip()]
+
+        except Exception as e:
+            logger.warning(f"LLM keyword extraction failed: {e}")
+
+        # Use robust extractor with validation + fallback
+        keywords = self.keyword_extractor.extract_keywords_robust(query, llm_keywords)
+
+        logger.info(f"   🔑 Final keywords: {keywords}")
+        return keywords
+
+    def _extract_search_keywords_legacy(self, query: str) -> List[str]:
+        """
+        Legacy keyword extraction (kept for backward compatibility)
+        Used when KeywordExtractor module is unavailable
         """
         prompt = f"""Extract 2-4 concise search keywords for a web search about this market intelligence query:
 
@@ -276,10 +351,10 @@ Example output: GLP-1 market size, Novo Nordisk revenue, diabetes drugs 2024"""
             keywords = [k.strip() for k in response.split(",") if k.strip()]
 
             # hard fallback if LLM output is empty / junk
-            if not keywords:    
+            if not keywords:
                 keywords = [query]
 
-            logger.info(f"   🔑 Extracted keywords: {keywords}")
+            logger.info(f"   🔑 Extracted keywords (legacy): {keywords}")
             return keywords
 
         except Exception as e:
@@ -372,7 +447,55 @@ Example output: GLP-1 market size, Novo Nordisk revenue, diabetes drugs 2024"""
         """
         Synthesize comprehensive market intelligence from fused sources
 
+        New approach:
+        - Generate each section independently (7 LLM calls)
+        - Plain text only (no JSON parsing)
+        - Guaranteed 100% section population
+
         Returns structured sections following the output contract
+        """
+        if not self.section_synthesizer:
+            # Legacy fallback if new module unavailable
+            return self._synthesize_intelligence_legacy(query, fused_context, web_results, rag_results)
+
+        try:
+            # Use bulletproof section-wise synthesis
+            sections = self.section_synthesizer.synthesize_all_sections(
+                query=query,
+                fused_context=fused_context,
+                web_results=web_results,
+                rag_results=rag_results
+            )
+
+            # Validate all 7 sections exist (should always be true)
+            required_sections = [
+                'summary', 'market_overview', 'key_metrics',
+                'drivers_and_trends', 'competitive_landscape',
+                'risks_and_opportunities', 'future_outlook'
+            ]
+
+            for section in required_sections:
+                if section not in sections:
+                    logger.error(f"Missing section: {section}")
+                    sections[section] = f"Insufficient data in retrieved sources for {section.replace('_', ' ')}."
+
+            logger.info(f"✅ Section synthesis complete: {len(sections)} sections")
+            return sections
+
+        except Exception as e:
+            logger.error(f"Section synthesis failed: {e}")
+            return self._create_fallback_sections(web_results, rag_results)
+
+    def _synthesize_intelligence_legacy(
+        self,
+        query: str,
+        fused_context: str,
+        web_results: List[Dict],
+        rag_results: List[Dict]
+    ) -> Dict[str, str]:
+        """
+        Legacy synthesis method (kept for backward compatibility)
+        Used when SectionSynthesizer module is unavailable
         """
         prompt = f"""You are a pharmaceutical market intelligence analyst. Based on the retrieved information, provide a comprehensive market analysis.
 
