@@ -4,12 +4,11 @@ Provides access to US patent data via the PatentsView Search API
 https://search.patentsview.org/docs/
 
 NOTE: Legacy API (api.patentsview.org) was deprecated May 1, 2025
-New API: search.patentsview.org with API key authentication
+New API: search.patentsview.org (no authentication required)
 """
 
 import logging
 import requests
-import os
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
 import time
@@ -22,7 +21,7 @@ class USPTOClient:
     Client for USPTO PatentsView Search API (2025+)
 
     API Documentation: https://search.patentsview.org/docs/
-    Requires API key (optional for testing, required for production)
+    No authentication required
     Rate limit: 45 requests per minute
 
     Legacy API (deprecated May 2025): https://api.patentsview.org
@@ -31,21 +30,18 @@ class USPTOClient:
 
     BASE_URL = "https://search.patentsview.org/api/v1"
 
-    # API endpoints
-    PATENTS_ENDPOINT = f"{BASE_URL}/patent/"
-    INVENTORS_ENDPOINT = f"{BASE_URL}/inventor/"
-    ASSIGNEES_ENDPOINT = f"{BASE_URL}/assignee/"
-    LOCATIONS_ENDPOINT = f"{BASE_URL}/location/"
+    # API endpoints - use plural query endpoints
+    PATENTS_ENDPOINT = f"{BASE_URL}/patents/query"
+    INVENTORS_ENDPOINT = f"{BASE_URL}/inventors/query"
+    ASSIGNEES_ENDPOINT = f"{BASE_URL}/assignees/query"
+    LOCATIONS_ENDPOINT = f"{BASE_URL}/locations/query"
 
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self):
         """
         Initialize USPTO PatentsView Search API client
 
-        Args:
-            api_key: Optional API key (can also be set via USPTO_API_KEY env var)
-                    Not required for basic queries, but recommended for production
+        No authentication required for PatentsView API
         """
-        self.api_key = api_key or os.getenv('USPTO_API_KEY', '')
         self.session = requests.Session()
 
         # Set headers
@@ -53,14 +49,6 @@ class USPTOClient:
             'User-Agent': 'MAESTRO-Patent-Intelligence-Agent/2.0',
             'Content-Type': 'application/json'
         }
-
-        # Add API key if available (required for production use)
-        if self.api_key:
-            headers['X-Api-Key'] = self.api_key
-            logger.info("USPTO PatentsView Search API client initialized with API key")
-        else:
-            logger.warning("⚠️  No USPTO API key found - some features may be limited")
-            logger.info("Get free API key at: https://search.patentsview.org/")
 
         self.session.headers.update(headers)
         self.rate_limit_delay = 1.4  # ~43 requests per minute to stay under limit
@@ -95,7 +83,7 @@ class USPTOClient:
         Returns:
             API response with patent data
 
-        New API Documentation: https://search.patentsview.org/docs/
+        API Documentation: https://search.patentsview.org/docs/
         """
         if fields is None:
             fields = [
@@ -115,7 +103,7 @@ class USPTOClient:
         if sort is None:
             sort = [{"patent_date": "desc"}]
 
-        # Build query parameters (new API uses GET with query params)
+        # Build query parameters for GET request
         import json
         params = {
             'q': json.dumps(query),
@@ -128,7 +116,7 @@ class USPTOClient:
         self._rate_limit()
 
         try:
-            logger.info(f"Searching USPTO patents (new API) with query: {query}")
+            logger.info(f"Searching USPTO patents with query: {query}")
             response = self.session.get(
                 self.PATENTS_ENDPOINT,
                 params=params,
@@ -253,7 +241,7 @@ class USPTOClient:
             limit: Maximum number of results
 
         Returns:
-            List of patent records
+            List of patent records (normalized)
         """
         if keywords:
             query = {
@@ -270,14 +258,16 @@ class USPTOClient:
         else:
             query = {"_text_any": {"assignee_organization": assignee}}
 
-        options = {
-            "per_page": min(limit, 100),
-            "page": 1,
-            "sort": [{"patent_date": "desc"}]
-        }
+        result = self.search_patents(
+            query,
+            per_page=min(limit, 1000),
+            page=1,
+            sort=[{"patent_date": "desc"}]
+        )
 
-        result = self.search_patents(query, options=options)
-        return result.get('patents', [])
+        # Normalize response
+        patents = result.get('patents', [])
+        return self._normalize_patents(patents)
 
     def search_by_classification(
         self,
@@ -292,50 +282,51 @@ class USPTOClient:
             limit: Maximum number of results
 
         Returns:
-            List of patent records
+            List of patent records (normalized)
         """
         query = {"_begins": {"cpc_subgroup_id": cpc_code}}
 
-        options = {
-            "per_page": min(limit, 100),
-            "page": 1,
-            "sort": [{"patent_date": "desc"}]
-        }
+        result = self.search_patents(
+            query,
+            per_page=min(limit, 1000),
+            page=1,
+            sort=[{"patent_date": "desc"}]
+        )
 
-        result = self.search_patents(query, options=options)
-        return result.get('patents', [])
+        patents = result.get('patents', [])
+        return self._normalize_patents(patents)
 
     def get_patent_family(
         self,
-        patent_number: str
+        patent_id: str
     ) -> Dict[str, Any]:
         """
         Get patent citations and related patents
 
         Args:
-            patent_number: Patent number (e.g., "10123456")
+            patent_id: Patent ID (e.g., "10123456")
 
         Returns:
-            Patent details with citations
+            Patent details with citations (normalized)
         """
-        query = {"_eq": {"patent_number": patent_number}}
+        query = {"_eq": {"patent_id": patent_id}}
 
         fields = [
-            "patent_number",
+            "patent_id",
             "patent_title",
             "patent_abstract",
             "patent_date",
-            "assignee_organization",
-            "cited_patent_number",
-            "citedby_patent_number",
-            "cited_patent_count",
-            "citedby_patent_count"
+            "assignees_at_grant.assignee_organization",
+            "patent_num_cited_by_us_patents"
         ]
 
         result = self.search_patents(query, fields=fields)
         patents = result.get('patents', [])
 
-        return patents[0] if patents else {}
+        if patents:
+            normalized = self._normalize_patents(patents)
+            return normalized[0] if normalized else {}
+        return {}
 
     def search_expiring_patents(
         self,
@@ -377,14 +368,15 @@ class USPTOClient:
             ]
         }
 
-        options = {
-            "per_page": 100,
-            "page": 1,
-            "sort": [{"patent_date": "asc"}]
-        }
+        result = self.search_patents(
+            query,
+            per_page=1000,
+            page=1,
+            sort=[{"patent_date": "asc"}]
+        )
 
-        result = self.search_patents(query, options=options)
-        return result.get('patents', [])
+        patents = result.get('patents', [])
+        return self._normalize_patents(patents)
 
     def get_top_assignees(
         self,
@@ -409,22 +401,23 @@ class USPTOClient:
         }
 
         fields = [
-            "assignee_organization",
-            "patent_number"
+            "assignees_at_grant.assignee_organization",
+            "patent_id"
         ]
 
-        options = {
-            "per_page": 100,
-            "page": 1
-        }
+        result = self.search_patents(
+            query,
+            fields=fields,
+            per_page=1000,
+            page=1
+        )
 
-        result = self.search_patents(query, fields=fields, options=options)
         patents = result.get('patents', [])
 
         # Count patents per assignee
         assignee_counts = {}
         for patent in patents:
-            assignees = patent.get('assignees', [])
+            assignees = patent.get('assignees_at_grant', [])
             for assignee in assignees:
                 org = assignee.get('assignee_organization', 'Unknown')
                 if org and org != 'Unknown':
@@ -441,3 +434,54 @@ class USPTOClient:
         ]
 
         return top_assignees
+
+    def _normalize_patents(self, patents: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Normalize patent data from new API format to expected structure
+
+        Args:
+            patents: Raw patent data from API
+
+        Returns:
+            List of normalized patent records
+        """
+        normalized_patents = []
+        for patent in patents:
+            normalized = {
+                'patent_number': patent.get('patent_id', ''),
+                'patent_title': patent.get('patent_title', ''),
+                'patent_abstract': patent.get('patent_abstract', ''),
+                'patent_date': patent.get('patent_date', ''),
+                'citedby_patent_count': patent.get('patent_num_cited_by_us_patents', 0),
+                'patent_type': patent.get('patent_type', ''),
+                'assignees': [],
+                'inventors': [],
+                'cpcs': []
+            }
+
+            # Normalize assignees
+            if 'assignees_at_grant' in patent:
+                for assignee in patent['assignees_at_grant']:
+                    normalized['assignees'].append({
+                        'assignee_organization': assignee.get('assignee_organization', ''),
+                        'assignee_country': assignee.get('assignee_country', '')
+                    })
+
+            # Normalize inventors
+            if 'inventors_at_grant' in patent:
+                for inventor in patent['inventors_at_grant']:
+                    normalized['inventors'].append({
+                        'inventor_first_name': inventor.get('inventor_name_first', ''),
+                        'inventor_last_name': inventor.get('inventor_name_last', '')
+                    })
+
+            # Normalize CPCs
+            if 'cpcs_at_grant' in patent:
+                for cpc in patent['cpcs_at_grant']:
+                    normalized['cpcs'].append({
+                        'cpc_section': cpc.get('cpc_section', '')
+                    })
+
+            normalized_patents.append(normalized)
+
+        return normalized_patents
