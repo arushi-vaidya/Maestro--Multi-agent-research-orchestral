@@ -20,6 +20,14 @@ interface Reference {
   summary?: string;
 }
 
+interface AgentExecutionStatus {
+  agent_id: string;
+  status: string;
+  started_at?: string;
+  completed_at?: string;
+  result_count?: number;
+}
+
 interface AnalysisResults {
   summary: string;
   comprehensive_summary?: string;
@@ -27,6 +35,35 @@ interface AnalysisResults {
   recommendation: string;
   timelineSaved: string;
   references: Reference[];
+
+  // NEW FIELDS from backend
+  confidence_score?: number;
+  active_agents?: string[];
+  agent_execution_status?: AgentExecutionStatus[];
+  market_intelligence?: {
+    agentId: string;
+    query: string;
+    sections: {
+      summary: string;
+      market_overview: string;
+      key_metrics: string;
+      drivers_and_trends: string;
+      competitive_landscape: string;
+      risks_and_opportunities: string;
+      future_outlook: string;
+    };
+    confidence: {
+      score: number;
+      breakdown: any;
+      explanation: string;
+      level: string;
+    };
+    sources: {
+      web: string[];
+      internal: string[];
+    };
+  };
+  total_trials?: number;
 }
 
 interface Agent {
@@ -46,7 +83,7 @@ const ResearchPage: React.FC = () => {
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [agentLogs, setAgentLogs] = useState<Record<string, string[]>>({});
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<'overall' | 'clinical' | 'other'>('overall');
+  const [activeTab, setActiveTab] = useState<'overall' | 'clinical' | 'market' | 'other'>('overall');
 
   const agents: Agent[] = [
     { id: 'market', name: 'Market Intelligence', icon: TrendingUp, color: 'from-blue-500 to-cyan-500', status: 'idle' },
@@ -67,8 +104,8 @@ const ResearchPage: React.FC = () => {
     setResults(null);
     setSelectedAgent(null);
     setActiveTab('overall');
-    setAgentLogs({ clinical: [] });
-    setActiveAgents(['clinical']);
+    setAgentLogs({});
+    setActiveAgents([]);  // Start with no agents, will be updated from backend
 
     const addLog = (agentId: string, message: string) => {
       setAgentLogs(prev => ({
@@ -77,15 +114,13 @@ const ResearchPage: React.FC = () => {
       }));
     };
 
-    addLog('clinical', 'Initializing Clinical Trials Agent...');
-    addLog('clinical', 'Extracting medical keywords from query...');
-
     const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:8000';
     const endpoint = `${apiUrl}/api/query`;
 
     try {
-      addLog('clinical', 'Connecting to ClinicalTrials.gov API...');
-      
+      // Initial log - we don't know which agents yet
+      console.log('📊 Processing query:', userQuery);
+
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
@@ -98,17 +133,30 @@ const ResearchPage: React.FC = () => {
         throw new Error(`Backend error: ${response.status}`);
       }
 
-      addLog('clinical', 'Retrieving clinical trials data...');
       const data = await response.json();
 
-      addLog('clinical', `Found ${data.references?.length || 0} clinical trials`);
-      addLog('clinical', 'Generating comprehensive analysis with AI...');
-      addLog('clinical', 'Analysis complete! Preparing results...');
+      // Extract active agents from backend response
+      const backendActiveAgents = data.active_agents || [];
+      setActiveAgents(backendActiveAgents);
+
+      // Add logs based on execution status
+      if (data.agent_execution_status) {
+        data.agent_execution_status.forEach((status: AgentExecutionStatus) => {
+          const agentName = status.agent_id === 'clinical' ? 'Clinical Trials' :
+                           status.agent_id === 'market' ? 'Market Intelligence' : status.agent_id;
+
+          if (status.status === 'completed') {
+            addLog(status.agent_id, `✅ ${agentName} Agent completed`);
+            addLog(status.agent_id, `Found ${status.result_count || 0} results`);
+          } else if (status.status === 'failed') {
+            addLog(status.agent_id, `❌ ${agentName} Agent failed`);
+          }
+        });
+      }
 
       setResults(data);
     } catch (error) {
       console.error('❌ Error calling backend:', error);
-      addLog('clinical', '❌ Error: Failed to complete analysis');
       alert(
         'Failed to connect to backend.\n\n' +
         'Make sure:\n' +
@@ -137,9 +185,46 @@ const ResearchPage: React.FC = () => {
   };
 
   const getAgentStatus = (agentId: string): 'idle' | 'running' | 'complete' => {
-    if (!activeAgents.includes(agentId)) return 'idle';
-    if (isProcessing) return 'running';
-    return 'complete';
+    // Check if agent executed and completed
+    if (results?.agent_execution_status) {
+      const status = results.agent_execution_status.find(s => s.agent_id === agentId);
+      if (status) {
+        if (status.status === 'completed') return 'complete';
+        if (status.status === 'failed') return 'complete';  // Show as complete even if failed
+      }
+    }
+
+    // Check if agent is currently in the active list
+    if (activeAgents.includes(agentId)) {
+      if (isProcessing) return 'running';
+      return 'complete';
+    }
+
+    return 'idle';
+  };
+
+  const getTabGlowClass = (tabId: string): string => {
+    // CRITICAL FIX: Use backend execution_status to determine if agent is actively running
+    // Check if ANY agent matching this tab is in 'running' state
+    
+    if (!results?.agent_execution_status) {
+      return ''; // No execution status available yet
+    }
+
+    const relevantAgents = tabId === 'clinical' ? ['clinical'] :
+                           tabId === 'market' ? ['market'] :
+                           [];
+
+    // Check if any relevant agent is actively RUNNING (not just active)
+    const isRunning = results.agent_execution_status.some(status =>
+      relevantAgents.includes(status.agent_id) && status.status === 'running'
+    );
+
+    if (isRunning) {
+      return 'animate-pulse ring-2 ring-purple-500/50 shadow-lg shadow-purple-500/50';
+    }
+
+    return '';
   };
 
   const getAgentReferences = (agentId: string): Reference[] => {
@@ -186,24 +271,89 @@ const ResearchPage: React.FC = () => {
 
   const getTabContent = (): string => {
     if (!results) return '';
+    
     switch (activeTab) {
       case 'clinical':
+        // FIXED: Return clinical-specific summary, NOT overview
         return results.comprehensive_summary || results.summary;
+        
+      case 'market':
+        // FIXED: Return full market intelligence sections with more lenient check
+        if (!results.market_intelligence) {
+          return 'No market intelligence data available. Check SERPAPI_KEY configuration.';
+        }
+        
+        const sections = results.market_intelligence.sections;
+        
+        // FIXED: More lenient check - just verify summary exists and isn't an error message
+        const hasValidContent = sections.summary && 
+                                sections.summary.length > 20 &&  // More lenient: 20 chars instead of 50
+                                !sections.summary.includes('No market intelligence') &&
+                                !sections.summary.includes('Check SERPAPI_KEY');
+        
+        if (!hasValidContent) {
+          return `Market intelligence data retrieved but synthesis incomplete. 
+
+Found ${results.market_intelligence.sources?.web?.length || 0} web sources and ${results.market_intelligence.sources?.internal?.length || 0} internal documents.
+
+Raw summary: ${sections.summary}
+
+Check backend logs for detailed synthesis status.`;
+        }
+        
+        // Return formatted market intelligence with all 7 sections
+        return `${sections.summary}
+
+## Market Overview
+${sections.market_overview}
+
+## Key Metrics
+${sections.key_metrics}
+
+## Drivers and Trends
+${sections.drivers_and_trends}
+
+## Competitive Landscape
+${sections.competitive_landscape}
+
+## Risks and Opportunities
+${sections.risks_and_opportunities}
+
+## Future Outlook
+${sections.future_outlook}`.trim();
+        
       case 'other':
         return 'Other agents data will appear here when implemented.';
+        
       default:
+        // FIXED: Overview tab returns synthesized overview (NOT clinical summary)
+        // This is the multi-agent synthesis from master agent
         return results.summary;
     }
   };
 
   const getTabReferences = (): Reference[] => {
     if (!results) return [];
+
+    // Defensive filtering with strict agentId enforcement
     switch (activeTab) {
       case 'clinical':
-        return results.references.filter(ref => ref.agentId === 'clinical');
+        // Only show references explicitly tagged as clinical
+        return results.references.filter(ref =>
+          ref.agentId && ref.agentId === 'clinical'
+        );
+      case 'market':
+        // Only show references explicitly tagged as market
+        return results.references.filter(ref =>
+          ref.agentId && ref.agentId === 'market'
+        );
       case 'other':
-        return results.references.filter(ref => ref.agentId !== 'clinical');
+        // Show references not tagged as clinical or market
+        return results.references.filter(ref =>
+          ref.agentId && ref.agentId !== 'clinical' && ref.agentId !== 'market'
+        );
       default:
+        // Overview: show all references
         return results.references;
     }
   };
@@ -523,13 +673,23 @@ ${idx + 1}. [${ref.nct_id ? 'CLINICAL TRIAL' : (ref.type?.toUpperCase() || 'REFE
                   </button>
                   <button
                     onClick={() => setActiveTab('clinical')}
-                    className={`px-4 py-2 rounded-lg transition-all ${
+                    className={`px-4 py-2 rounded-lg transition-all ${getTabGlowClass('clinical')} ${
                       activeTab === 'clinical'
                         ? 'bg-gradient-to-r from-green-600 to-emerald-600 text-white'
                         : 'bg-dark-gray/50 text-gray-400 hover:text-white'
                     }`}
                   >
                     Clinical Trials ({results.references.filter(r => r.agentId === 'clinical').length})
+                  </button>
+                  <button
+                    onClick={() => setActiveTab('market')}
+                    className={`px-4 py-2 rounded-lg transition-all ${getTabGlowClass('market')} ${
+                      activeTab === 'market'
+                        ? 'bg-gradient-to-r from-blue-600 to-cyan-600 text-white'
+                        : 'bg-dark-gray/50 text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    Market Intelligence ({results.references.filter(r => r.agentId === 'market').length})
                   </button>
                   <button
                     onClick={() => setActiveTab('other')}
@@ -589,14 +749,19 @@ ${idx + 1}. [${ref.nct_id ? 'CLINICAL TRIAL' : (ref.type?.toUpperCase() || 'REFE
                                       {ref.date}
                                     </span>
                                   )}
-                                  <a
-                                    href={ref.nct_id ? `https://clinicaltrials.gov/study/${ref.nct_id}` : ref.url}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-sm text-neon-blue hover:text-neon-cyan flex items-center gap-1 transition-colors"
-                                  >
-                                    View Source <ExternalLink className="w-3 h-3" />
-                                  </a>
+                                  {(ref.url || ref.nct_id) && (
+                                    <a
+                                      href={ref.nct_id ? `https://clinicaltrials.gov/study/${ref.nct_id}` : ref.url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-sm text-neon-blue hover:text-neon-cyan flex items-center gap-1 transition-colors"
+                                    >
+                                      View Source <ExternalLink className="w-3 h-3" />
+                                    </a>
+                                  )}
+                                  {!ref.url && !ref.nct_id && (
+                                    <span className="text-sm text-gray-500">No URL available</span>
+                                  )}
                                 </div>
                               </div>
                             </div>

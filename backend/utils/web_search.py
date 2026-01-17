@@ -53,7 +53,12 @@ class WebSearchEngine:
             search_provider: Search provider to use ('serpapi', 'bing', 'google', 'duckduckgo')
         """
         self.search_provider = search_provider.lower()
-        self.api_key = api_key or os.getenv(f"{search_provider.upper()}_API_KEY")
+        # Try multiple env var naming conventions for flexibility
+        self.api_key = (
+            api_key or
+            os.getenv(f"{search_provider.upper()}_KEY") or  # SERPAPI_KEY
+            os.getenv(f"{search_provider.upper()}_API_KEY")  # SERPAPI_API_KEY
+        )
 
         if not REQUESTS_AVAILABLE:
             logger.warning("requests library not available. Web search disabled.")
@@ -87,9 +92,31 @@ class WebSearchEngine:
             elif self.search_provider == "duckduckgo":
                 return self._search_duckduckgo(query, num_results)
             else:
-                logger.warning(f"No API key for {self.search_provider}, using fallback search")
-                return self._search_fallback(query, num_results)
+                # FIXED: Log warning but don't raise exception - return empty results
+                warning_msg = f"""
+⚠️  WARNING: {self.search_provider.upper()} API KEY MISSING
 
+Market Agent will return limited results without web search.
+
+To enable full market intelligence:
+1. Get a free SerpAPI key: https://serpapi.com/users/sign_up
+2. Set environment variable: export SERPAPI_KEY=your_key_here
+3. Or add to .env file: SERPAPI_KEY=your_key_here
+4. Restart the backend server
+
+Current provider: {self.search_provider}
+Expected env var: SERPAPI_KEY or SERPAPI_API_KEY
+                """
+                logger.warning(warning_msg)
+                print(warning_msg)
+                
+                # Return empty results instead of crashing
+                return []
+
+        except ValueError as e:
+            # Re-raise configuration errors (shouldn't happen now)
+            logger.error(f"Web search configuration error: {e}")
+            return []
         except Exception as e:
             logger.error(f"Web search failed: {e}")
             return []

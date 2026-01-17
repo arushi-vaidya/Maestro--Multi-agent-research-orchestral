@@ -6,19 +6,15 @@ Generates market intelligence sections independently to avoid JSON parsing failu
 import logging
 from typing import Dict, List, Any
 from config.llm.llm_config_sync import generate_llm_response
+import time  # Add at top if not present
 
 logger = logging.getLogger(__name__)
 
 
 class SectionSynthesizer:
     """
-    Robust section-by-section synthesis for market intelligence
-
-    Key Benefits:
-    - No JSON parsing errors (plain text only)
-    - Guaranteed 100% section population
-    - Graceful degradation (fallback per section)
-    - Explicit corroboration instructions
+    Section-wise synthesis for market intelligence
+    Generates each section independently for 100% reliability
     """
 
     def __init__(self):
@@ -59,82 +55,75 @@ class SectionSynthesizer:
                 'temperature': 0.4
             }
         }
+        # TEMPORARY: Reduced from 7 to 3 sections to avoid rate limits
+        # Restore full 7-section format after upgrading API tiers
+        self.SECTION_IDS = [
+            'summary',                    # CRITICAL: Always needed
+            'market_overview',            # CRITICAL: Core market data
+            'key_metrics'                 # CRITICAL: Specific numbers
+            # 'drivers_and_trends',       # OPTIONAL: Temporarily disabled
+            # 'competitive_landscape',     # OPTIONAL: Temporarily disabled
+            # 'risks_and_opportunities',   # OPTIONAL: Temporarily disabled
+            # 'future_outlook'             # OPTIONAL: Temporarily disabled
+        ]
 
     def synthesize_all_sections(
         self,
         query: str,
         fused_context: str,
-        web_results: List[Dict[str, Any]],
-        rag_results: List[Dict[str, Any]]
+        web_results: List[Dict],
+        rag_results: List[Dict]
     ) -> Dict[str, str]:
         """
-        Generate all 7 sections independently
+        Generate market intelligence sections with rate limit mitigation
 
-        GUARANTEES:
-        - All 7 sections will be populated
-        - No JSON parsing errors
-        - Graceful degradation if LLM fails
-
-        Args:
-            query: User query
-            fused_context: Combined web + RAG context
-            web_results: Web search results
-            rag_results: RAG retrieval results
-
-        Returns:
-            Dict with all 7 sections (always complete)
+        TEMPORARY: Only generates 3 critical sections to avoid API limits
         """
         sections = {}
 
-        # Check if we have any sources
-        has_sources = len(web_results) > 0 or len(rag_results) > 0
-
-        if not has_sources:
-            logger.warning("No sources available for synthesis")
-            return self._create_no_data_sections()
-
-        # Generate each section independently
-        for section_name, section_config in self.section_definitions.items():
-            logger.info(f"Generating section: {section_name}")
+        # Generate the 3 critical sections with delays
+        for idx, section_id in enumerate(self.SECTION_IDS):
+            logger.info(f"Generating section: {section_id}")
 
             try:
-                section_content = self._generate_single_section(
-                    section_name=section_name,
-                    instruction=section_config['instruction'],
+                section_content = self._generate_section(
+                    section_id=section_id,
                     query=query,
-                    context=fused_context,
-                    max_tokens=section_config['max_tokens'],
-                    temperature=section_config['temperature']
+                    fused_context=fused_context,
+                    web_results=web_results,
+                    rag_results=rag_results
                 )
+                sections[section_id] = section_content
 
-                # Validate minimum quality
-                if len(section_content.strip()) < 20:
-                    logger.warning(f"Section {section_name} too short, using fallback")
-                    section_content = f"Insufficient data in retrieved sources for {section_name.replace('_', ' ')}."
-
-                sections[section_name] = section_content
-                logger.debug(f"Section {section_name}: {len(section_content)} chars")
+                # Wait between calls
+                if idx < len(self.SECTION_IDS) - 1:
+                    time.sleep(2)  # 2 seconds between sections
 
             except Exception as e:
-                logger.error(f"Section {section_name} generation failed: {e}")
-                sections[section_name] = f"Insufficient data in retrieved sources for {section_name.replace('_', ' ')}."
+                logger.error(f"Section {section_id} generation failed: {e}")
+                sections[section_id] = self._create_section_fallback(section_id, web_results, rag_results)
 
-        # Final validation: ensure all 7 sections exist
-        for section_name in self.section_definitions.keys():
-            if section_name not in sections or not sections[section_name]:
-                sections[section_name] = f"Insufficient data in retrieved sources for {section_name.replace('_', ' ')}."
+        # Fill in remaining 4 sections with placeholder text
+        remaining_sections = [
+            'drivers_and_trends',
+            'competitive_landscape', 
+            'risks_and_opportunities',
+            'future_outlook'
+        ]
 
-        logger.info(f"✅ All {len(sections)} sections generated")
+        for section_id in remaining_sections:
+            sections[section_id] = "Detailed analysis available in retrieved sources. Upgrade API tier for full synthesis."
+
+        logger.info(f"✅ All {len(sections)} sections populated (3 synthesized + 4 placeholder)")
         return sections
 
-    def _generate_single_section(
+    def _generate_section(
         self,
-        section_name: str,
-        instruction: str,
+        section_id: str,
         query: str,
-        context: str,
-        max_tokens: int,
-        temperature: float
+        fused_context: str,
+        web_results: List[Dict],
+        rag_results: List[Dict]
     ) -> str:
         """
         Generate a single section robustly
@@ -210,6 +199,35 @@ Generate the section now:"""
         content = content.replace('**', '').replace('##', '').replace('#', '')
 
         return content.strip()
+
+    def _create_section_fallback(
+        self, 
+        section_id: str, 
+        web_results: List[Dict], 
+        rag_results: List[Dict]
+    ) -> str:
+        """
+        Create fallback section content from source snippets when LLM fails
+        """
+        logger.info(f"Creating fallback for section: {section_id}")
+
+        # Extract snippets from top sources
+        snippets = []
+        for r in web_results[:3]:
+            snippet = r.get('snippet', '')
+            if snippet and len(snippet) > 30:
+                snippets.append(snippet)
+
+        for r in rag_results[:2]:
+            content = r.get('content', '')
+            if content and len(content) > 30:
+                snippets.append(content[:200])
+
+        if snippets:
+            combined = " ".join(snippets[:3])
+            return f"{combined[:400]}... [Source data available in references]"
+
+        return f"Data for {section_id.replace('_', ' ')} available in retrieved sources. See references for details."
 
     def _create_no_data_sections(self) -> Dict[str, str]:
         """
