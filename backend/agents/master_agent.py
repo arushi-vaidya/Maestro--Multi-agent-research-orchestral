@@ -2,13 +2,14 @@
 Master Agent - Simplified for Feature 1
 Orchestrates query processing and agent coordination
 
-Feature 1: Clinical Agent and Patent Agent
+Feature 1: Clinical Agent, Patent Agent, and Market Agent
 Future: Multi-agent coordination with LangGraph
 """
 from typing import Dict, Any, List
 import logging
 from agents.clinical_agent import ClinicalAgent
 from agents.patent_agent import PatentAgent
+from agents.market_agent_hybrid import MarketAgentHybrid
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -21,6 +22,7 @@ class MasterAgent:
     Features:
     - Clinical Agent: Clinical trials analysis
     - Patent Agent: Patent landscape, FTO, IP strategy
+    - Market Agent: Market intelligence, forecasts, competitive landscape
     Future: LangGraph-based multi-agent orchestration
     """
 
@@ -28,7 +30,12 @@ class MasterAgent:
         self.name = "Master Agent"
         self.clinical_agent = ClinicalAgent()
         self.patent_agent = PatentAgent()
-        logger.info("Master Agent initialized with Clinical and Patent agents")
+        self.market_agent = MarketAgentHybrid(
+            use_rag=True,
+            use_web_search=True,
+            initialize_corpus=False  # Avoid corpus initialization at startup
+        )
+        logger.info("Master Agent initialized with Clinical, Patent, and Market agents")
 
     def _detect_query_type(self, query: str) -> str:
         """
@@ -38,7 +45,7 @@ class MasterAgent:
             query: User query
 
         Returns:
-            Query type: 'patent', 'clinical', or 'clinical' (default)
+            Query type: 'patent', 'market', 'clinical' (default)
         """
         query_lower = query.lower()
 
@@ -50,8 +57,20 @@ class MasterAgent:
             'patent litigation', 'patent protection', 'exclusivity'
         ]
 
+        # Market-related keywords
+        market_keywords = [
+            'market', 'market size', 'market share', 'forecast', 'cagr',
+            'revenue', 'sales', 'commercial', 'pricing', 'reimbursement',
+            'competitive landscape', 'market dynamics', 'market opportunity',
+            'market analysis', 'market trends', 'market growth', 'market intelligence',
+            'blockbuster', 'peak sales', 'market leader', 'market outlook'
+        ]
+
         if any(keyword in query_lower for keyword in patent_keywords):
             return 'patent'
+
+        if any(keyword in query_lower for keyword in market_keywords):
+            return 'market'
 
         # Default to clinical
         return 'clinical'
@@ -69,6 +88,8 @@ class MasterAgent:
 
         if query_type == 'patent':
             return self._process_patent_query(query)
+        elif query_type == 'market':
+            return self._process_market_query(query)
         else:
             return self._process_clinical_query(query)
 
@@ -229,4 +250,102 @@ class MasterAgent:
                 "white_space": patent_result.get('white_space', []),
                 "expiring_count": expiring_analysis.get('count', 0)
             }
+        }
+
+    def _process_market_query(self, query: str) -> Dict[str, Any]:
+        """Process market intelligence query"""
+        logger.info("📊 Delegating to Market Agent...")
+        print(f"   📊 Calling Market Agent...")
+
+        # Get market intelligence data
+        market_result = self.market_agent.process(query)
+
+        # Extract sections
+        sections = market_result.get('sections', {})
+        confidence = market_result.get('confidence', {})
+        web_results = market_result.get('web_results', [])
+        rag_results = market_result.get('rag_results', [])
+
+        # Create references from web and RAG results
+        logger.info(f"📊 Processing {len(web_results)} web sources and {len(rag_results)} RAG documents...")
+        print(f"   📊 Processing {len(web_results)} web + {len(rag_results)} RAG sources...")
+        references = []
+
+        # Add web results
+        for i, result in enumerate(web_results[:15], 1):  # Top 15 web sources
+            references.append({
+                "type": "market-report",
+                "title": result.get('title', 'No title'),
+                "source": result.get('url', 'Unknown source'),
+                "date": result.get('date', 'N/A'),
+                "url": result.get('url', ''),
+                "relevance": 95 - i,  # Decreasing relevance
+                "agentId": "market",
+                "summary": result.get('snippet', 'No summary available')[:300]
+            })
+
+        # Add RAG results
+        for i, result in enumerate(rag_results[:10], 1):  # Top 10 RAG documents
+            references.append({
+                "type": "market-report",
+                "title": result.get('title', 'Internal Document'),
+                "source": result.get('source', 'Internal Knowledge Base'),
+                "date": 'N/A',
+                "url": '',
+                "relevance": 80 - i,  # Decreasing relevance
+                "agentId": "market",
+                "summary": result.get('snippet', 'No summary available')[:300]
+            })
+
+        # Create insights from market intelligence
+        insights = [{
+            "agent": "Market Intelligence Agent",
+            "finding": sections.get('summary', 'No data available'),
+            "confidence": int(confidence.get('score', 0.5) * 100),
+            "confidence_level": confidence.get('level', 'medium'),
+            "web_sources": len(web_results),
+            "rag_sources": len(rag_results)
+        }]
+
+        # Create recommendations based on market intelligence
+        recommendations = []
+        if sections.get('market_overview'):
+            recommendations.append("📈 Market overview analysis available in detailed sections.")
+
+        if sections.get('drivers_and_trends'):
+            recommendations.append("🔍 Key market drivers and trends identified.")
+
+        if sections.get('competitive_landscape'):
+            recommendations.append("🏢 Competitive landscape analysis included.")
+
+        if confidence.get('level') in ['high', 'very_high']:
+            recommendations.append(f"✅ High confidence ({confidence.get('score', 0)*100:.0f}%) - data quality is strong.")
+        elif confidence.get('level') == 'low':
+            recommendations.append(f"⚠️ Low confidence ({confidence.get('score', 0)*100:.0f}%) - consider additional data sources.")
+
+        recommendation_text = " ".join(recommendations) if recommendations else "Review market intelligence sections for detailed analysis."
+
+        logger.info(f"✅ Master Agent completed market intelligence processing")
+        logger.info(f"   Web sources: {len(web_results)}")
+        logger.info(f"   RAG sources: {len(rag_results)}")
+        logger.info(f"   Confidence: {confidence.get('score', 0):.2%} ({confidence.get('level', 'unknown')})")
+        logger.info("="*60)
+
+        return {
+            "summary": sections.get('summary', 'No market intelligence data available'),
+            "insights": insights,
+            "recommendation": recommendation_text,
+            "timelineSaved": "3-5 hours",
+            "references": references,
+            "market_sections": {
+                "market_overview": sections.get('market_overview', ''),
+                "key_metrics": sections.get('key_metrics', ''),
+                "drivers_and_trends": sections.get('drivers_and_trends', ''),
+                "competitive_landscape": sections.get('competitive_landscape', ''),
+                "risks_and_opportunities": sections.get('risks_and_opportunities', ''),
+                "future_outlook": sections.get('future_outlook', '')
+            },
+            "confidence": confidence,
+            "web_sources_count": len(web_results),
+            "rag_sources_count": len(rag_results)
         }

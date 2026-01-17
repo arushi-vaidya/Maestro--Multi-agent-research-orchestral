@@ -13,6 +13,8 @@ logger = logging.getLogger(__name__)
 
 class ClinicalAgent:
     def __init__(self):
+        self.name = "Clinical Trials Agent"
+        self.agent_id = "clinical"
         self.groq_api_key = GROQ_API_KEY
         self.gemini_api_key = GEMINI_API_KEY
         logger.info("ClinicalAgent initialized")

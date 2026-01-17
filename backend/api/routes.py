@@ -92,18 +92,22 @@ def process_query(request: QueryRequest):
 
 @router.get("/agents/status")
 async def get_agent_status():
-    """Get status of all agents"""
+    """Get status of all agents - reflects actual integration state"""
     try:
         agent = get_master_agent()
-        return {
+
+        # Determine actual agent availability based on master agent configuration
+        status = {
             "master_agent": "active",
             "specialized_agents": {
-                "market": "active",
-                "clinical": "pending",  # Not yet implemented in Feature 1
-                "patent": "pending",
-                "trade": "pending"
+                "clinical": "active" if hasattr(agent, 'clinical_agent') and agent.clinical_agent else "unavailable",
+                "patent": "active" if hasattr(agent, 'patent_agent') and agent.patent_agent else "unavailable",
+                "market": "active" if hasattr(agent, 'market_agent') and agent.market_agent else "unavailable",
+                "trade": "unavailable"  # Not implemented
             }
         }
+
+        return status
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
