@@ -387,6 +387,217 @@ def mock_market_agent_output():
 
 
 # ============================================================================
+# LITERATURE AGENT FIXTURES
+# ============================================================================
+
+@pytest.fixture
+def mock_pubmed_search_response():
+    """Mock response from PubMed esearch API"""
+    return {
+        "esearchresult": {
+            "count": "2",
+            "retmax": "2",
+            "retstart": "0",
+            "idlist": ["38123456", "38234567"],
+            "translationset": [],
+            "translationstack": [],
+            "querytranslation": "GLP-1[All Fields] AND diabetes[All Fields]"
+        }
+    }
+
+
+@pytest.fixture
+def mock_pubmed_fetch_xml():
+    """Mock XML response from PubMed efetch API"""
+    return """<?xml version="1.0" ?>
+<!DOCTYPE PubmedArticleSet PUBLIC "-//NLM//DTD PubMedArticle, 1st January 2024//EN" "https://dtd.nlm.nih.gov/ncbi/pubmed/out/pubmed_240101.dtd">
+<PubmedArticleSet>
+  <PubmedArticle>
+    <MedlineCitation Status="MEDLINE" Owner="NLM">
+      <PMID Version="1">38123456</PMID>
+      <Article PubModel="Print">
+        <Journal>
+          <Title>Diabetes Care</Title>
+          <ISOAbbreviation>Diabetes Care</ISOAbbreviation>
+        </Journal>
+        <ArticleTitle>Efficacy and Safety of GLP-1 Receptor Agonists in Type 2 Diabetes: A Systematic Review</ArticleTitle>
+        <Abstract>
+          <AbstractText>Background: GLP-1 receptor agonists have emerged as effective treatments for type 2 diabetes. Methods: Systematic review of randomized controlled trials. Results: GLP-1 agonists significantly reduce HbA1c and body weight. Conclusion: GLP-1 agonists are safe and effective for type 2 diabetes management.</AbstractText>
+        </Abstract>
+        <AuthorList CompleteYN="Y">
+          <Author ValidYN="Y">
+            <LastName>Smith</LastName>
+            <ForeName>John</ForeName>
+            <Initials>J</Initials>
+          </Author>
+          <Author ValidYN="Y">
+            <LastName>Jones</LastName>
+            <ForeName>Mary</ForeName>
+            <Initials>M</Initials>
+          </Author>
+        </AuthorList>
+        <PublicationTypeList>
+          <PublicationType UI="D016428">Journal Article</PublicationType>
+          <PublicationType UI="D016454">Review</PublicationType>
+        </PublicationTypeList>
+      </Article>
+      <PubDate>
+        <Year>2024</Year>
+        <Month>Jan</Month>
+      </PubDate>
+    </MedlineCitation>
+  </PubmedArticle>
+  <PubmedArticle>
+    <MedlineCitation Status="MEDLINE" Owner="NLM">
+      <PMID Version="1">38234567</PMID>
+      <Article PubModel="Electronic">
+        <Journal>
+          <Title>JAMA Internal Medicine</Title>
+          <ISOAbbreviation>JAMA Intern Med</ISOAbbreviation>
+        </Journal>
+        <ArticleTitle>Cardiovascular Outcomes with GLP-1 Agonists: Meta-Analysis</ArticleTitle>
+        <Abstract>
+          <AbstractText>Objective: To evaluate cardiovascular outcomes of GLP-1 agonists. Design: Meta-analysis of cardiovascular outcome trials. Results: GLP-1 agonists reduce major adverse cardiovascular events by 14%.</AbstractText>
+        </Abstract>
+        <AuthorList CompleteYN="Y">
+          <Author ValidYN="Y">
+            <LastName>Johnson</LastName>
+            <ForeName>Emily</ForeName>
+            <Initials>E</Initials>
+          </Author>
+        </AuthorList>
+        <PublicationTypeList>
+          <PublicationType UI="D016428">Journal Article</PublicationType>
+          <PublicationType UI="D017418">Meta-Analysis</PublicationType>
+        </PublicationTypeList>
+      </Article>
+      <PubDate>
+        <Year>2023</Year>
+        <Month>Dec</Month>
+      </PubDate>
+    </MedlineCitation>
+  </PubmedArticle>
+</PubmedArticleSet>"""
+
+
+@pytest.fixture
+def mock_groq_literature_keywords():
+    """Mock Groq API response for literature keyword extraction"""
+    return {
+        "choices": [
+            {
+                "message": {
+                    "content": "GLP-1 receptor agonists, type 2 diabetes, cardiovascular outcomes"
+                }
+            }
+        ]
+    }
+
+
+@pytest.fixture
+def mock_gemini_literature_summary():
+    """Mock Gemini API response for literature summary"""
+    return {
+        "candidates": [
+            {
+                "content": {
+                    "parts": [
+                        {
+                            "text": """BIOMEDICAL LITERATURE REVIEW
+
+1. OVERVIEW
+
+Total Publications: 2
+Search Keywords: GLP-1 diabetes
+Data Source: PubMed (NCBI)
+
+This systematic review analyzes recent biomedical literature on GLP-1 receptor agonists for type 2 diabetes.
+
+2. KEY FINDINGS
+
+A systematic review by Smith et al. (2024) demonstrates that GLP-1 receptor agonists significantly reduce HbA1c levels and body weight in patients with type 2 diabetes [PMID:38123456]. The study confirms strong efficacy and safety profiles across multiple trials.
+
+Johnson et al. (2023) conducted a meta-analysis showing that GLP-1 agonists reduce major adverse cardiovascular events by 14% [PMID:38234567], providing additional cardiovascular protection beyond glycemic control.
+
+3. THERAPEUTIC IMPLICATIONS
+
+The evidence strongly supports GLP-1 receptor agonists as first-line therapy for type 2 diabetes, particularly in patients with cardiovascular risk factors. The dual benefits of glycemic control and cardiovascular protection make these agents highly valuable in clinical practice.
+
+4. RESEARCH TRENDS
+
+Current research focuses on cardiovascular outcomes, weight management, and novel formulations. The field shows robust evidence from systematic reviews and meta-analyses.
+
+5. CLINICAL RECOMMENDATIONS
+
+GLP-1 agonists should be considered for patients with type 2 diabetes who require both glycemic control and weight management. Cardiovascular benefits support their use in high-risk populations.
+
+6. SUMMARY
+
+The literature demonstrates strong, consistent evidence for GLP-1 receptor agonist efficacy and safety in type 2 diabetes management, with additional cardiovascular benefits."""
+                        }
+                    ]
+                }
+            }
+        ]
+    }
+
+
+@pytest.fixture
+def mock_literature_agent_output():
+    """Mock output from Literature Agent"""
+    return {
+        "agent_id": "literature",
+        "query": "GLP-1 diabetes",
+        "keywords": "GLP-1 receptor agonists, type 2 diabetes",
+        "publications": [
+            {
+                "pmid": "38123456",
+                "title": "Efficacy and Safety of GLP-1 Receptor Agonists in Type 2 Diabetes: A Systematic Review",
+                "authors": "Smith J, Jones M",
+                "journal": "Diabetes Care",
+                "year": "2024",
+                "abstract": "Background: GLP-1 receptor agonists have emerged as effective treatments...",
+                "publication_types": ["Journal Article", "Review"],
+                "url": "https://pubmed.ncbi.nlm.nih.gov/38123456/"
+            },
+            {
+                "pmid": "38234567",
+                "title": "Cardiovascular Outcomes with GLP-1 Agonists: Meta-Analysis",
+                "authors": "Johnson E",
+                "journal": "JAMA Intern Med",
+                "year": "2023",
+                "abstract": "Objective: To evaluate cardiovascular outcomes of GLP-1 agonists...",
+                "publication_types": ["Journal Article", "Meta-Analysis"],
+                "url": "https://pubmed.ncbi.nlm.nih.gov/38234567/"
+            }
+        ],
+        "summary": "Found 2 relevant publications on GLP-1 diabetes from PubMed",
+        "comprehensive_summary": "BIOMEDICAL LITERATURE REVIEW\n\n1. OVERVIEW\n\nTotal Publications: 2...",
+        "total_publications": 2,
+        "references": [
+            {
+                "id": "PMID:38123456",
+                "title": "Efficacy and Safety of GLP-1 Receptor Agonists",
+                "url": "https://pubmed.ncbi.nlm.nih.gov/38123456/",
+                "date": "2024-01",
+                "source": "PubMed",
+                "agentId": "literature",
+                "confidence": 0.9
+            },
+            {
+                "id": "PMID:38234567",
+                "title": "Cardiovascular Outcomes with GLP-1 Agonists",
+                "url": "https://pubmed.ncbi.nlm.nih.gov/38234567/",
+                "date": "2023-12",
+                "source": "PubMed",
+                "agentId": "literature",
+                "confidence": 0.9
+            }
+        ]
+    }
+
+
+# ============================================================================
 # AKGP FIXTURES
 # ============================================================================
 

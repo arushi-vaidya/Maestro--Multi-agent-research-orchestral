@@ -10,17 +10,19 @@ from agents.master_agent import MasterAgent
 class TestMasterAgentInitialization:
     """Test Master Agent initialization"""
 
+    @patch('agents.master_agent.LiteratureAgent')
     @patch('agents.master_agent.ClinicalAgent')
     @patch('agents.master_agent.PatentAgent')
     @patch('agents.master_agent.MarketAgentHybrid')
     def test_master_agent_initializes_all_agents(
-        self, mock_market_class, mock_patent_class, mock_clinical_class
+        self, mock_market_class, mock_patent_class, mock_clinical_class, mock_literature_class
     ):
         """Test that Master Agent initializes all sub-agents"""
         # Setup mocks
         mock_clinical_class.return_value = Mock()
         mock_patent_class.return_value = Mock()
         mock_market_class.return_value = Mock()
+        mock_literature_class.return_value = Mock()
 
         master = MasterAgent()
 
@@ -28,12 +30,14 @@ class TestMasterAgentInitialization:
         assert master.clinical_agent is not None
         assert master.patent_agent is not None
         assert master.market_agent is not None
+        assert master.literature_agent is not None
 
     def test_master_agent_has_required_methods(self):
         """Test that Master Agent has all required methods"""
         with patch('agents.master_agent.ClinicalAgent'), \
              patch('agents.master_agent.PatentAgent'), \
-             patch('agents.master_agent.MarketAgentHybrid'):
+             patch('agents.master_agent.MarketAgentHybrid'), \
+             patch('agents.master_agent.LiteratureAgent'):
             master = MasterAgent()
 
             assert hasattr(master, 'process_query')
@@ -41,6 +45,7 @@ class TestMasterAgentInitialization:
             assert hasattr(master, '_run_clinical_agent')
             assert hasattr(master, '_run_market_agent')
             assert hasattr(master, '_run_patent_agent')
+            assert hasattr(master, '_run_literature_agent')
             assert hasattr(master, '_fuse_results')
             assert callable(master.process_query)
 
@@ -138,6 +143,46 @@ class TestQueryClassification:
         # Default is both market and clinical
         assert 'market' in result
         assert 'clinical' in result
+
+    @patch('agents.master_agent.LiteratureAgent')
+    @patch('agents.master_agent.ClinicalAgent')
+    @patch('agents.master_agent.PatentAgent')
+    @patch('agents.master_agent.MarketAgentHybrid')
+    def test_classify_literature_only_query(self, mock_m, mock_p, mock_c, mock_l):
+        """Test classification of literature-only queries"""
+        master = MasterAgent()
+
+        # Literature-only queries
+        assert master._classify_query("Show me recent literature on GLP-1") == ['literature']
+        assert master._classify_query("What are the latest publications about GLP-1?") == ['literature']
+        assert master._classify_query("GLP-1 research papers and studies") == ['literature']
+        assert master._classify_query("Literature review on diabetes treatments") == ['literature']
+
+    @patch('agents.master_agent.LiteratureAgent')
+    @patch('agents.master_agent.ClinicalAgent')
+    @patch('agents.master_agent.PatentAgent')
+    @patch('agents.master_agent.MarketAgentHybrid')
+    def test_classify_literature_and_clinical_query(self, mock_m, mock_p, mock_c, mock_l):
+        """Test classification requiring both literature and clinical"""
+        master = MasterAgent()
+
+        result = master._classify_query("GLP-1 publications and clinical trials")
+
+        assert 'literature' in result
+        assert 'clinical' in result
+
+    @patch('agents.master_agent.LiteratureAgent')
+    @patch('agents.master_agent.ClinicalAgent')
+    @patch('agents.master_agent.PatentAgent')
+    @patch('agents.master_agent.MarketAgentHybrid')
+    def test_classify_literature_and_market_query(self, mock_m, mock_p, mock_c, mock_l):
+        """Test classification requiring both literature and market"""
+        master = MasterAgent()
+
+        result = master._classify_query("GLP-1 research papers and market analysis")
+
+        assert 'literature' in result
+        assert 'market' in result
 
 
 class TestAgentRouting:

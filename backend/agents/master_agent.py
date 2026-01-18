@@ -323,91 +323,36 @@ class MasterAgent:
                     'result_count': 0
                 })
 
-        # Step 3: Fuse results into unified response
-        logger.info(f"🔀 Fusing results from {len(results)} agent(s)...")
-        print(f"🔀 Fusing results from {len(results)} agent(s)...")
-        fused_response = self._fuse_results(query, results, execution_status)
-
-        # Log final response stats
-        total_refs = len(fused_response.get('references', []))
-        total_insights = len(fused_response.get('insights', []))
-        logger.info(f"✅ Master Agent completed: {total_refs} total references, {total_insights} insights")
-        print(f"✅ Master Agent completed: {total_refs} total references, {total_insights} insights")
-        logger.info("="*60)
-
-        return fused_response
-        results = {}
-        execution_status = []  # Track execution status for frontend
-
-        if 'clinical' in active_agents:
-            logger.info("🏥 Delegating to Clinical Agent...")
-            print(f"   🏥 Calling Clinical Agent...")
+        if 'literature' in active_agents:
+            logger.info("📚 Delegating to Literature Agent...")
+            print(f"   📚 Calling Literature Agent...")
             start_time = datetime.now()
-            
+
             # Add RUNNING status BEFORE execution
             execution_status.append({
-                'agent_id': 'clinical',
+                'agent_id': 'literature',
                 'status': 'running',
                 'started_at': start_time.isoformat(),
                 'completed_at': None,
                 'result_count': 0
             })
-            
+
             try:
-                clinical_result = self._run_clinical_agent(query)
-                results['clinical'] = clinical_result
-                trial_count = clinical_result.get('total_trials', 0)
-                ref_count = len(clinical_result.get('references', []))
-                logger.info(f"✅ Clinical Agent returned: {trial_count} trials, {ref_count} references")
-                print(f"   ✅ Clinical Agent: {trial_count} trials, {ref_count} references")
+                literature_result = self._run_literature_agent(query)
+                results['literature'] = literature_result
+                pub_count = len(literature_result.get('publications', []))
+                logger.info(f"✅ Literature Agent returned: {pub_count} publications")
+                print(f"   ✅ Literature Agent: {pub_count} publications")
 
                 # Update to COMPLETED status
                 execution_status[-1].update({
                     'status': 'completed',
                     'completed_at': datetime.now().isoformat(),
-                    'result_count': trial_count
+                    'result_count': pub_count
                 })
             except Exception as e:
-                logger.error(f"❌ Clinical Agent FAILED: {e}", exc_info=True)
-                print(f"   ❌ Clinical Agent FAILED: {e}")
-                execution_status[-1].update({
-                    'status': 'failed',
-                    'completed_at': datetime.now().isoformat(),
-                    'result_count': 0
-                })
-
-        if 'market' in active_agents:
-            logger.info("📊 Delegating to Market Agent...")
-            print(f"   📊 Calling Market Agent...")
-            start_time = datetime.now()
-            
-            # Add RUNNING status BEFORE execution
-            execution_status.append({
-                'agent_id': 'market',
-                'status': 'running',
-                'started_at': start_time.isoformat(),
-                'completed_at': None,
-                'result_count': 0
-            })
-            
-            try:
-                market_result = self._run_market_agent(query)
-                results['market'] = market_result
-                web_count = len(market_result.get('web_results', []))
-                rag_count = len(market_result.get('rag_results', []))
-                source_count = web_count + rag_count
-                logger.info(f"✅ Market Agent returned: {web_count} web sources, {rag_count} RAG docs")
-                print(f"   ✅ Market Agent: {web_count} web sources, {rag_count} RAG docs")
-
-                # Update to COMPLETED status
-                execution_status[-1].update({
-                    'status': 'completed',
-                    'completed_at': datetime.now().isoformat(),
-                    'result_count': source_count
-                })
-            except Exception as e:
-                logger.error(f"❌ Market Agent FAILED: {e}", exc_info=True)
-                print(f"   ❌ Market Agent FAILED: {e}")
+                logger.error(f"❌ Literature Agent FAILED: {e}", exc_info=True)
+                print(f"   ❌ Literature Agent FAILED: {e}")
                 execution_status[-1].update({
                     'status': 'failed',
                     'completed_at': datetime.now().isoformat(),
