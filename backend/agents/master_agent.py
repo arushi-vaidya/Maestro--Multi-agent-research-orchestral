@@ -154,7 +154,13 @@ class MasterAgent:
 
         # 3b. Explicit multi-agent with "and" connective
         if has_explicit_and:
-            if has_market and has_clinical and not has_patent:
+            if has_literature and has_clinical and not has_market and not has_patent:
+                logger.info("🎯 Query classified as: LITERATURE + CLINICAL (explicit 'and')")
+                return ['literature', 'clinical']
+            elif has_literature and has_market and not has_clinical and not has_patent:
+                logger.info("🎯 Query classified as: LITERATURE + MARKET (explicit 'and')")
+                return ['literature', 'market']
+            elif has_market and has_clinical and not has_patent and not has_literature:
                 logger.info("🎯 Query classified as: MARKET + CLINICAL (explicit 'and')")
                 return ['market', 'clinical']
             elif has_patent and has_market and has_clinical:

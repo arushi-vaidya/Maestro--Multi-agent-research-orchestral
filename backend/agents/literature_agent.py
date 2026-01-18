@@ -45,7 +45,7 @@ class LiteratureAgent:
 
     def __init__(self):
         """Initialize Literature Agent"""
-        self.name = "Literature Review Agent"
+        self.name = "Literature Agent"
         self.agent_id = "literature"
 
         # PubMed E-utilities API (no key required for basic usage, but recommended)
@@ -109,10 +109,28 @@ class LiteratureAgent:
             except Exception as e:
                 logger.warning(f"Groq keyword extraction failed: {e}")
 
-        # Fallback: Simple keyword extraction
-        keywords = self._sanitize_keywords(query)
+        # Fallback: Deterministic keyword extraction
+        keywords = self._deterministic_keyword_extraction(query)
         logger.info(f"Using fallback keywords: '{keywords}'")
         return keywords
+
+    def _deterministic_keyword_extraction(self, query: str) -> str:
+        """
+        Deterministic fallback for keyword extraction
+        Removes stopwords and extracts meaningful terms
+        """
+        import re
+
+        # Common stopwords to remove
+        stopwords = {'what', 'are', 'the', 'is', 'for', 'in', 'on', 'of', 'with', 'to', 'a', 'an', 'and', 'or', 'but', 'show', 'me', 'tell', 'about', 'latest', 'recent'}
+
+        # Tokenize and clean
+        words = re.findall(r'\b\w+\b', query.lower())
+        keywords = [w for w in words if w not in stopwords and len(w) > 2]
+
+        # Join and sanitize
+        result = " ".join(keywords[:10])  # Limit to 10 terms
+        return self._sanitize_keywords(result)
 
     def _sanitize_keywords(self, keywords: str) -> str:
         """
@@ -419,6 +437,10 @@ Plain text, UPPERCASE headers."""
 
         return ""
 
+    def _generate_structured_fallback(self, keywords: str, publications: List[Dict[str, Any]]) -> str:
+        """Generate structured fallback summary (alias for test compatibility)"""
+        return self._generate_structured_summary(publications, keywords)
+
     def _generate_structured_summary(self, publications: List[Dict[str, Any]], keywords: str) -> str:
         """Generate structured fallback summary"""
         logger.info("Generating structured fallback summary")
@@ -484,14 +506,20 @@ Plain text, UPPERCASE headers."""
             publications = self.search_pubmed(keywords, max_results=20)
 
             if not publications:
-                logger.warning("No publications found")
+                logger.warning(f"No PubMed results found for: '{keywords}'")
                 return {
-                    "summary": f"No literature found for: {keywords}",
+                    "query": user_query,
+                    "summary": f"No publications found for: {keywords}",
                     "comprehensive_summary": "Unable to generate literature review due to lack of publications.",
                     "publications": [],
                     "total_publications": 0,
                     "keywords": keywords,
-                    "confidence_score": 0.0
+                    "confidence_score": 0.0,
+                    "references": [],
+                    "agent_id": self.agent_id,
+                    "agent_name": self.name,
+                    "source": "PubMed",
+                    "timestamp": datetime.utcnow().isoformat()
                 }
 
             # Step 3: Generate summary
@@ -504,17 +532,33 @@ Plain text, UPPERCASE headers."""
             # Calculate confidence based on result count
             confidence_score = min(len(publications) / 20, 1.0)  # Max at 20 results
 
+            # Create references from publications
+            references = []
+            for i, pub in enumerate(publications[:20], 1):
+                pmid = pub.get('pmid', 'N/A')
+                references.append({
+                    "id": f"PMID:{pmid}",
+                    "title": pub.get('title', 'No title'),
+                    "url": pub.get('url', f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/"),
+                    "date": pub.get('year', 'N/A'),
+                    "source": "PubMed",
+                    "agentId": "literature",
+                    "confidence": confidence_score
+                })
+
             logger.info("="*50)
             logger.info("Literature Agent processing completed successfully")
             logger.info("="*50)
 
             return {
+                "query": user_query,
                 "summary": basic_summary,
                 "comprehensive_summary": comprehensive_summary,
                 "publications": publications,
                 "total_publications": len(publications),
                 "keywords": keywords,
                 "confidence_score": confidence_score,
+                "references": references,
                 "agent_id": self.agent_id,
                 "agent_name": self.name,
                 "source": "PubMed",
