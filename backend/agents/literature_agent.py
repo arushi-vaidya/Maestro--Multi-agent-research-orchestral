@@ -50,7 +50,8 @@ class LiteratureAgent:
 
         # PubMed E-utilities API (no key required for basic usage, but recommended)
         self.pubmed_api_key = os.getenv("PUBMED_API_KEY", "")
-        self.base_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
+        self.pubmed_base_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
+        self.base_url = self.pubmed_base_url  # Keep backward compatibility
 
         # LLM API keys for optional summarization
         self.groq_api_key = os.getenv("GROQ_API_KEY", "")
@@ -318,7 +319,7 @@ class LiteratureAgent:
             Summary text
         """
         if not publications:
-            return f"No literature found for: {keywords}"
+            return f"No publications found for: {keywords}"
 
         logger.info(f"Generating summary for {len(publications)} publications")
 
@@ -446,7 +447,7 @@ Plain text, UPPERCASE headers."""
         logger.info("Generating structured fallback summary")
 
         sections = []
-        sections.append("LITERATURE REVIEW")
+        sections.append("BIOMEDICAL LITERATURE REVIEW")
         sections.append("")
         sections.append(f"Search Query: {keywords}")
         sections.append(f"Publications Found: {len(publications)}")
