@@ -26,6 +26,29 @@ logger = logging.getLogger(__name__)
 
 
 # ==============================================================================
+# HELPER FUNCTIONS
+# ==============================================================================
+
+def _get_enum_value(value):
+    """
+    Helper to extract string value from enum or string (Pydantic v2 compatibility)
+
+    In Pydantic v2 with use_enum_values=True, enum fields are automatically
+    converted to their string values. This helper handles both enum objects
+    and pre-converted strings.
+
+    Args:
+        value: Enum object or string value
+
+    Returns:
+        String value
+    """
+    if isinstance(value, str):
+        return value
+    return value.value if hasattr(value, 'value') else str(value)
+
+
+# ==============================================================================
 # TEMPORAL CONFIGURATION
 # ==============================================================================
 
@@ -362,7 +385,7 @@ class TemporalReasoner:
             if year not in by_year:
                 by_year[year] = {}
 
-            source_type = evidence.source_type.value
+            source_type = _get_enum_value(evidence.source_type)
             if source_type not in by_year[year]:
                 by_year[year][source_type] = 0
             by_year[year][source_type] += 1

@@ -26,6 +26,29 @@ logger = logging.getLogger(__name__)
 
 
 # ==============================================================================
+# HELPER FUNCTIONS
+# ==============================================================================
+
+def _get_enum_value(value):
+    """
+    Helper to extract string value from enum or string (Pydantic v2 compatibility)
+
+    In Pydantic v2 with use_enum_values=True, enum fields are automatically
+    converted to their string values. This helper handles both enum objects
+    and pre-converted strings.
+
+    Args:
+        value: Enum object or string value
+
+    Returns:
+        String value
+    """
+    if isinstance(value, str):
+        return value
+    return value.value if hasattr(value, 'value') else str(value)
+
+
+# ==============================================================================
 # PROVENANCE DATA STRUCTURES
 # ==============================================================================
 
@@ -264,13 +287,13 @@ class ProvenanceTracker:
         # Count by source type
         source_type_counts = {}
         for chain in self._provenance_chains.values():
-            st = chain.source_type.value
+            st = _get_enum_value(chain.source_type)
             source_type_counts[st] = source_type_counts.get(st, 0) + 1
 
         # Count by quality
         quality_counts = {}
         for chain in self._provenance_chains.values():
-            q = chain.quality.value
+            q = _get_enum_value(chain.quality)
             quality_counts[q] = quality_counts.get(q, 0) + 1
 
         # Average confidence by agent
@@ -339,7 +362,7 @@ class ProvenanceTracker:
             "event_type": event_type,
             "evidence_id": evidence_id,
             "agent_name": agent_name,
-            "source_type": source_type.value,
+            "source_type": _get_enum_value(source_type),
             "raw_reference": raw_reference
         }
         self._audit_log.append(event)

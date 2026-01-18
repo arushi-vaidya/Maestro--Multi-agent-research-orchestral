@@ -198,20 +198,24 @@ class PatentAgent:
         
         # Remove explanatory text in parentheses
         keywords = re.sub(r'\([^)]*\)', '', keywords)
-        
-        # Remove markdown formatting
-        keywords = re.sub(r'\*\*', '', keywords)
-        keywords = re.sub(r'`', '', keywords)
-        
+
+        # Remove markdown formatting (double asterisks, single asterisks, backticks)
+        keywords = re.sub(r'\*\*', '', keywords)  # Remove **bold**
+        keywords = re.sub(r'\*', '', keywords)    # Remove *italic* or *bullets*
+        keywords = re.sub(r'`', '', keywords)     # Remove `code`
+
         # Collapse multiple spaces
         keywords = re.sub(r'\s+', ' ', keywords)
-        
-        # Limit to 100 chars for USPTO API
+
+        # Limit to 100 chars for USPTO API (strict enforcement)
         if len(keywords) > 100:
             # If too long, take first meaningful part (before comma if exists)
             parts = keywords.split(',')
             keywords = parts[0].strip()
-        
+            # If still too long, truncate to 100 chars
+            if len(keywords) > 100:
+                keywords = keywords[:100].strip()
+
         return keywords.strip()
 
     def search_patents(self, keywords: str, limit: int = 100) -> List[Dict[str, Any]]:

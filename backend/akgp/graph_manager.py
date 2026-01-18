@@ -33,6 +33,29 @@ logger = logging.getLogger(__name__)
 
 
 # ==============================================================================
+# HELPER FUNCTIONS
+# ==============================================================================
+
+def _get_enum_value(value):
+    """
+    Helper to extract string value from enum or string (Pydantic v2 compatibility)
+
+    In Pydantic v2 with use_enum_values=True, enum fields are automatically
+    converted to their string values. This helper handles both enum objects
+    and pre-converted strings.
+
+    Args:
+        value: Enum object or string value
+
+    Returns:
+        String value
+    """
+    if isinstance(value, str):
+        return value
+    return value.value if hasattr(value, 'value') else str(value)
+
+
+# ==============================================================================
 # NEO4J WRAPPER (Graceful degradation)
 # ==============================================================================
 
@@ -262,15 +285,17 @@ class GraphManager:
             List of node data dictionaries
         """
         if self.in_memory_mode:
+            node_type_str = _get_enum_value(node_type)
             results = [
                 node for node in self._nodes.values()
-                if node.get("node_type") == node_type.value
+                if node.get("node_type") == node_type_str
             ]
             return results[:limit]
         else:
             with self.driver.session() as session:
+                node_type_str = _get_enum_value(node_type)
                 query = f"""
-                MATCH (n:{node_type.value})
+                MATCH (n:{node_type_str})
                 RETURN n
                 LIMIT $limit
                 """
@@ -292,8 +317,9 @@ class GraphManager:
 
         if self.in_memory_mode:
             results = []
+            node_type_str = _get_enum_value(node_type) if node_type else None
             for node in self._nodes.values():
-                if node_type and node.get("node_type") != node_type.value:
+                if node_type_str and node.get("node_type") != node_type_str:
                     continue
                 if name_lower in node.get("name", "").lower():
                     results.append(node)
@@ -301,8 +327,9 @@ class GraphManager:
         else:
             with self.driver.session() as session:
                 if node_type:
+                    node_type_str = _get_enum_value(node_type)
                     query = f"""
-                    MATCH (n:{node_type.value})
+                    MATCH (n:{node_type_str})
                     WHERE toLower(n.name) CONTAINS toLower($name)
                     RETURN n
                     """
@@ -415,8 +442,9 @@ class GraphManager:
         """
         if self.in_memory_mode:
             results = []
+            rel_type_str = _get_enum_value(rel_type) if rel_type else None
             for rel in self._relationships.values():
-                if rel_type and rel.get("relationship_type") != rel_type.value:
+                if rel_type_str and rel.get("relationship_type") != rel_type_str:
                     continue
 
                 if direction == "outgoing" and rel.get("source_id") == node_id:
@@ -429,12 +457,13 @@ class GraphManager:
             return results
         else:
             with self.driver.session() as session:
+                rel_type_str = _get_enum_value(rel_type) if rel_type else None
                 if direction == "outgoing":
-                    pattern = f"(n)-[r{':' + rel_type.value if rel_type else ''}]->()"
+                    pattern = f"(n)-[r{':' + rel_type_str if rel_type_str else ''}]->()"
                 elif direction == "incoming":
-                    pattern = f"()<-[r{':' + rel_type.value if rel_type else ''}]-(n)"
+                    pattern = f"()<-[r{':' + rel_type_str if rel_type_str else ''}]-(n)"
                 else:  # both
-                    pattern = f"(n)-[r{':' + rel_type.value if rel_type else ''}]-()"
+                    pattern = f"(n)-[r{':' + rel_type_str if rel_type_str else ''}]-()"
 
                 query = f"""
                 MATCH {pattern}
