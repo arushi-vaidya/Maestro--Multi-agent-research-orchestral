@@ -117,8 +117,10 @@ class PatentAgent:
             query: User query
 
         Returns:
-            Extracted keywords
+            Extracted keywords (clean, sanitized)
         """
+        import re
+        
         logger.info(f"Extracting keywords from query: '{query}'")
 
         # Try Groq first
@@ -134,7 +136,7 @@ class PatentAgent:
                     "messages": [
                         {
                             "role": "system",
-                            "content": "You are a patent keyword extractor. Extract ONLY technical, therapeutic, and chemical keywords relevant for patent searches. EXCLUDE business terms like 'market', 'landscape', 'analysis'. Focus on: drug names, therapeutic areas, mechanisms, technologies, chemical compounds, diseases, treatment methods. Return only keywords separated by commas."
+                            "content": "You are a patent keyword extractor. Extract ONLY 2-5 simple technical/therapeutic keywords from the query. NO explanations, NO lists, NO patent numbers. Return ONLY comma-separated keywords. Examples: 'GLP-1, diabetes' or 'CRISPR gene therapy' or 'cancer immunotherapy'. Keep it SHORT and CLEAN."
                         },
                         {
                             "role": "user",
@@ -142,7 +144,7 @@ class PatentAgent:
                         }
                     ],
                     "temperature": 0.3,
-                    "max_tokens": 100
+                    "max_tokens": 50
                 }
 
                 response = requests.post(url, json=payload, headers=headers, timeout=10)
@@ -150,15 +152,67 @@ class PatentAgent:
                 keywords = response.json().get("choices", [{}])[0].get("message", {}).get("content", "").strip()
 
                 if keywords:
+                    # Sanitize the output
+                    keywords = self._sanitize_patent_keywords(keywords)
                     logger.info(f"Extracted keywords: '{keywords}'")
                     return keywords
 
             except Exception as e:
                 logger.warning(f"Groq keyword extraction failed: {e}")
 
-        # Fallback: Use query as-is
-        logger.info(f"Using original query as keywords: '{query}'")
-        return query
+        # Fallback: Extract key terms from query manually
+        logger.info(f"Using fallback keyword extraction for query: '{query}'")
+        keywords = self._sanitize_patent_keywords(query)
+        return keywords
+    
+    def _sanitize_patent_keywords(self, keywords: str) -> str:
+        """
+        Sanitize patent keywords for USPTO API.
+        
+        Removes:
+        - Numbered lists (1., 2., etc.)
+        - Bullet points
+        - Patent numbers
+        - Explanatory text
+        - Multiple lines
+        - Excess whitespace
+        
+        Returns clean keyword string suitable for USPTO search.
+        """
+        import re
+        
+        # Keep only first line
+        keywords = keywords.split('\n')[0].strip()
+        
+        # Remove numbered lists (1., 2., etc.)
+        keywords = re.sub(r'^\d+\.\s*', '', keywords)
+        
+        # Remove bullet points
+        keywords = re.sub(r'^[\-\*\•]\s*', '', keywords)
+        
+        # Remove patent numbers like "US 11,517,870" or "US11046"
+        keywords = re.sub(r'\bUS\s*[\d,]+\b', '', keywords, flags=re.IGNORECASE)
+        
+        # Remove "Based on available information" and similar prefixes
+        keywords = re.sub(r'^(Based on|Here are|Some|Recent|Latest)\s+.*?:\s*', '', keywords, flags=re.IGNORECASE)
+        
+        # Remove explanatory text in parentheses
+        keywords = re.sub(r'\([^)]*\)', '', keywords)
+        
+        # Remove markdown formatting
+        keywords = re.sub(r'\*\*', '', keywords)
+        keywords = re.sub(r'`', '', keywords)
+        
+        # Collapse multiple spaces
+        keywords = re.sub(r'\s+', ' ', keywords)
+        
+        # Limit to 100 chars for USPTO API
+        if len(keywords) > 100:
+            # If too long, take first meaningful part (before comma if exists)
+            parts = keywords.split(',')
+            keywords = parts[0].strip()
+        
+        return keywords.strip()
 
     def search_patents(self, keywords: str, limit: int = 100) -> List[Dict[str, Any]]:
         """

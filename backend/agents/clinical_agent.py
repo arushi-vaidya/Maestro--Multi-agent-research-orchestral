@@ -102,7 +102,7 @@ class ClinicalAgent:
 
         return keywords.strip()
 
-    def search_trials(self, keywords: str, page_size: int = 1000) -> dict:
+    def search_trials(self, keywords: str, page_size: int = 300) -> dict:
         """
         Search clinical trials using ClinicalTrials.gov API v2
 

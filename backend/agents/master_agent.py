@@ -6,8 +6,11 @@ Feature 1: Clinical Agent, Patent Agent, and Market Agent
 Future: Multi-agent coordination with LangGraph
 """
 from typing import Dict, Any, List
+from datetime import datetime
 import logging
 import os  # CRITICAL FIX: Added missing import
+import requests
+import time
 from agents.clinical_agent import ClinicalAgent
 from agents.patent_agent import PatentAgent
 from agents.market_agent_hybrid import MarketAgentHybrid
@@ -497,6 +500,7 @@ class MasterAgent:
             'expiring_analysis': expiring_analysis
         }
 
+    def _fuse_results(self, query: str, results: Dict[str, Any], execution_status: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
         Fuse results from multiple agents into unified response.
 
@@ -646,7 +650,63 @@ class MasterAgent:
         logger.info(f"🔀 Fusion complete: {len(references)} references, {len(insights)} insights")
 
         return response
+
+    def _synthesize_overview_summary(self, query: str, clinical_data: Dict[str, Any], market_data: Dict[str, Any]) -> str:
+        """
+        Generate intelligent overview summary by synthesizing insights from all agents.
+
+        This is executed AFTER all agents complete, ensuring comprehensive synthesis.
+        Uses LLM to create a coherent, evidence-backed summary.
+        
+        FIXED: Now correctly prioritizes multi-agent synthesis over single-agent summaries
+        FIXED: Added retry logic for rate limit errors (429) and Groq fallback
+        """
+        # Check what data we have
+        has_clinical = bool(clinical_data and clinical_data.get('total_trials', 0) > 0)
+        has_market = bool(market_data and market_data.get('sections', {}).get('summary'))
+        
+        logger.info(f"Overview synthesis: clinical={has_clinical}, market={has_market}")
+        
+        # If BOTH agents ran successfully, synthesize intelligently
+        if has_clinical and has_market:
+            logger.info("🔀 Both agents completed - generating multi-agent synthesis")
+            
+            clinical_summary = clinical_data.get('comprehensive_summary', clinical_data.get('summary', ''))
+            clinical_trial_count = clinical_data.get('total_trials', 0)
+            
+            market_summary = market_data['sections']['summary']
+            market_confidence = market_data['confidence']['level']
+            web_source_count = len(market_data.get('web_results', []))
+            
+            # Try Gemini first (with retry for rate limits), then fall back to Groq, then concatenation
+            import time
+            
+            # Attempt 1: Gemini with retry
+            gemini_api_key = os.getenv('GEMINI_API_KEY') or os.getenv('GOOGLE_API_KEY')
+            if gemini_api_key:
+                for attempt in range(2):  # Max 2 attempts
+                    try:
+                        import requests
+                        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key={gemini_api_key}"
                         
+                        synthesis_prompt = f"""You are a pharmaceutical intelligence analyst synthesizing insights from multiple specialized research agents.
+
+QUERY: {query}
+
+CLINICAL INTELLIGENCE ({clinical_trial_count} trials analyzed):
+{clinical_summary[:3000]}
+
+MARKET INTELLIGENCE ({web_source_count} sources, {market_confidence} confidence):
+{market_summary[:3000]}
+
+Create a comprehensive executive overview (300-400 words) that:
+1. Synthesizes key insights from BOTH clinical and market perspectives
+2. Highlights critical intersections (e.g., how clinical trial outcomes inform market potential)
+3. Provides actionable intelligence for decision-makers
+4. Balances clinical evidence with market dynamics
+
+Write in clear paragraphs. Do NOT simply concatenate the summaries - synthesize intelligently by drawing connections between clinical and market data."""
+
                         payload = {
                             "contents": [{
                                 "parts": [{"text": synthesis_prompt}]

@@ -30,11 +30,11 @@ class USPTOClient:
 
     BASE_URL = "https://search.patentsview.org/api/v1"
 
-    # API endpoints - use plural query endpoints
-    PATENTS_ENDPOINT = f"{BASE_URL}/patents/query"
-    INVENTORS_ENDPOINT = f"{BASE_URL}/inventors/query"
-    ASSIGNEES_ENDPOINT = f"{BASE_URL}/assignees/query"
-    LOCATIONS_ENDPOINT = f"{BASE_URL}/locations/query"
+    # API endpoints - correct PatentsView 2025 endpoints
+    PATENTS_ENDPOINT = f"{BASE_URL}/patents"
+    INVENTORS_ENDPOINT = f"{BASE_URL}/inventors"
+    ASSIGNEES_ENDPOINT = f"{BASE_URL}/assignees"
+    LOCATIONS_ENDPOINT = f"{BASE_URL}/locations"
 
     def __init__(self):
         """
@@ -134,7 +134,8 @@ class USPTOClient:
             logger.error(f"USPTO API request failed: {e}")
             logger.error(f"Endpoint: {self.PATENTS_ENDPOINT}")
             logger.error(f"Query: {query}")
-            raise
+            # Return empty result instead of raising
+            return {"patents": [], "total_patent_count": 0}
 
     def search_by_keywords(
         self,
@@ -146,7 +147,7 @@ class USPTOClient:
         Search patents by keywords in title or abstract (2025+ API)
 
         Args:
-            keywords: Search keywords
+            keywords: Search keywords (comma-separated or single term)
             limit: Maximum number of results
             years_back: Search patents from last N years
 
@@ -157,22 +158,49 @@ class USPTOClient:
         end_date = datetime.now()
         start_date = end_date - timedelta(days=365 * years_back)
 
-        # Build query using PatentsView Search API query language
-        query = {
-            "_and": [
-                {
-                    "_or": [
-                        {"_text_any": {"patent_title": keywords}},
-                        {"_text_any": {"patent_abstract": keywords}}
-                    ]
-                },
-                {
-                    "_gte": {
-                        "patent_date": start_date.strftime("%Y-%m-%d")
+        # Parse keywords - handle comma-separated terms
+        keyword_list = [kw.strip() for kw in keywords.split(',') if kw.strip()]
+        
+        if not keyword_list:
+            logger.warning("No keywords provided for patent search")
+            return []
+        
+        # Build query with proper OR logic for multiple keywords
+        # PatentsView API format: each keyword gets its own _text_any clause
+        if len(keyword_list) == 1:
+            # Single keyword - simple format
+            query = {
+                "_and": [
+                    {
+                        "_or": [
+                            {"_text_any": {"patent_title": keyword_list[0]}},
+                            {"_text_any": {"patent_abstract": keyword_list[0]}}
+                        ]
+                    },
+                    {
+                        "_gte": {
+                            "patent_date": start_date.strftime("%Y-%m-%d")
+                        }
                     }
-                }
-            ]
-        }
+                ]
+            }
+        else:
+            # Multiple keywords - OR them together
+            keyword_or_clauses = []
+            for kw in keyword_list:
+                keyword_or_clauses.append({"_text_any": {"patent_title": kw}})
+                keyword_or_clauses.append({"_text_any": {"patent_abstract": kw}})
+            
+            query = {
+                "_and": [
+                    {"_or": keyword_or_clauses},
+                    {
+                        "_gte": {
+                            "patent_date": start_date.strftime("%Y-%m-%d")
+                        }
+                    }
+                ]
+            }
 
         result = self.search_patents(
             query,
