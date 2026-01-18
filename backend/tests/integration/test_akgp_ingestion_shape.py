@@ -20,6 +20,7 @@ class TestIngestionEngineInitialization:
     def test_ingestion_engine_initializes(self):
         """Test that IngestionEngine initializes successfully"""
         mock_graph = Mock(spec=GraphManager)
+        mock_graph.find_nodes_by_name.return_value = []  # No existing nodes
         engine = IngestionEngine(mock_graph)
 
         assert engine is not None
@@ -36,8 +37,10 @@ class TestClinicalTrialIngestion:
         """Test successful clinical trial ingestion"""
         # Setup mock graph manager
         mock_graph = Mock(spec=GraphManager)
+        mock_graph.find_nodes_by_name.return_value = []  # No existing nodes
         mock_graph.create_node.side_effect = ["trial_1", "evidence_1", "drug_1", "disease_1"]
         mock_graph.create_relationship.return_value = "rel_1"
+        mock_graph.find_nodes_by_name.return_value = []  # No existing nodes
 
         engine = IngestionEngine(mock_graph)
 
@@ -66,8 +69,10 @@ class TestClinicalTrialIngestion:
     def test_ingest_clinical_trial_preserves_provenance(self):
         """Test that provenance fields are preserved"""
         mock_graph = Mock(spec=GraphManager)
+        mock_graph.find_nodes_by_name.return_value = []  # No existing nodes
         mock_graph.create_node.side_effect = ["trial_1", "evidence_1", "drug_1", "disease_1"]
         mock_graph.create_relationship.return_value = "rel_1"
+        mock_graph.find_nodes_by_name.return_value = []  # No existing nodes
 
         engine = IngestionEngine(mock_graph)
 
@@ -96,6 +101,7 @@ class TestClinicalTrialIngestion:
     def test_ingest_clinical_trial_minimal_fields(self):
         """Test ingestion with minimal required fields"""
         mock_graph = Mock(spec=GraphManager)
+        mock_graph.find_nodes_by_name.return_value = []  # No existing nodes
         mock_graph.create_node.side_effect = ["trial_1", "evidence_1"]
 
         engine = IngestionEngine(mock_graph)
@@ -117,10 +123,12 @@ class TestClinicalTrialIngestion:
     def test_ingest_clinical_trial_no_duplicates(self):
         """Test that duplicate ingestion doesn't create duplicate nodes"""
         mock_graph = Mock(spec=GraphManager)
+        mock_graph.find_nodes_by_name.return_value = []  # No existing nodes
 
         # First ingestion
         mock_graph.create_node.side_effect = ["trial_1", "evidence_1", "drug_1", "disease_1"]
         mock_graph.create_relationship.return_value = "rel_1"
+        mock_graph.find_nodes_by_name.return_value = []  # No existing nodes
 
         engine = IngestionEngine(mock_graph)
 
@@ -151,8 +159,10 @@ class TestPatentIngestion:
     def test_ingest_patent_success(self):
         """Test successful patent ingestion"""
         mock_graph = Mock(spec=GraphManager)
+        mock_graph.find_nodes_by_name.return_value = []  # No existing nodes
         mock_graph.create_node.side_effect = ["patent_1", "evidence_1", "drug_1", "disease_1"]
         mock_graph.create_relationship.return_value = "rel_1"
+        mock_graph.find_nodes_by_name.return_value = []  # No existing nodes
 
         engine = IngestionEngine(mock_graph)
 
@@ -177,6 +187,7 @@ class TestPatentIngestion:
     def test_ingest_patent_preserves_provenance(self):
         """Test that patent provenance is preserved"""
         mock_graph = Mock(spec=GraphManager)
+        mock_graph.find_nodes_by_name.return_value = []  # No existing nodes
         mock_graph.create_node.side_effect = ["patent_1", "evidence_1"]
 
         engine = IngestionEngine(mock_graph)
@@ -205,7 +216,9 @@ class TestMarketSignalIngestion:
     def test_ingest_market_signal_success(self):
         """Test successful market signal ingestion"""
         mock_graph = Mock(spec=GraphManager)
+        mock_graph.find_nodes_by_name.return_value = []  # No existing nodes
         mock_graph.create_node.side_effect = ["market_1", "evidence_1", "drug_1"]
+        mock_graph.find_nodes_by_name.return_value = []  # No existing nodes
 
         engine = IngestionEngine(mock_graph)
 
@@ -233,6 +246,7 @@ class TestConflictDetection:
     def test_ingest_conflicting_evidence_triggers_detection(self):
         """Test that conflicting evidence is detected"""
         mock_graph = Mock(spec=GraphManager)
+        mock_graph.find_nodes_by_name.return_value = []  # No existing nodes
         mock_conflict_detector = Mock()
         mock_conflict_detector.detect_conflicts.return_value = []
 
@@ -451,6 +465,7 @@ class TestRelationshipCreation:
     def test_relationships_have_evidence_links(self):
         """Test that relationships are linked to evidence"""
         mock_graph = Mock(spec=GraphManager)
+        mock_graph.find_nodes_by_name.return_value = []  # No existing nodes
         mock_graph.create_node.side_effect = ["trial_1", "evidence_1", "drug_1", "disease_1"]
         mock_graph.create_relationship.return_value = "rel_1"
 
@@ -477,6 +492,7 @@ class TestRelationshipCreation:
     def test_relationships_have_confidence_scores(self):
         """Test that relationships inherit confidence from evidence"""
         mock_graph = Mock(spec=GraphManager)
+        mock_graph.find_nodes_by_name.return_value = []  # No existing nodes
         mock_graph.create_node.side_effect = ["trial_1", "evidence_1", "drug_1", "disease_1"]
         mock_graph.create_relationship.return_value = "rel_1"
 
@@ -505,6 +521,7 @@ class TestErrorHandling:
     def test_missing_required_field_raises_error(self):
         """Test that missing required fields raise errors"""
         mock_graph = Mock(spec=GraphManager)
+        mock_graph.find_nodes_by_name.return_value = []  # No existing nodes
         engine = IngestionEngine(mock_graph)
 
         # Missing nct_id (required field)
@@ -533,6 +550,7 @@ class TestErrorHandling:
     def test_graph_manager_failure_propagates(self):
         """Test that GraphManager failures are handled"""
         mock_graph = Mock(spec=GraphManager)
+        mock_graph.find_nodes_by_name.return_value = []  # No existing nodes
         mock_graph.create_node.side_effect = Exception("Graph creation failed")
 
         engine = IngestionEngine(mock_graph)
@@ -556,6 +574,7 @@ class TestBatchIngestion:
     def test_batch_ingest_clinical_trials(self):
         """Test ingesting multiple clinical trials"""
         mock_graph = Mock(spec=GraphManager)
+        mock_graph.find_nodes_by_name.return_value = []  # No existing nodes
 
         # Create enough IDs for all nodes
         node_ids = [f"node_{i}" for i in range(50)]
