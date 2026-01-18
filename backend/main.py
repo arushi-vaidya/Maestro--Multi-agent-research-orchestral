@@ -6,10 +6,18 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 import os
+import logging
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -52,16 +60,112 @@ async def root():
 
 @app.get("/health")
 async def health_check():
-    """Detailed health check"""
+    """Detailed health check - consistent with actual agent availability"""
+    # Check actual agent status dynamically
+    agent_status = {}
+    try:
+        from api.routes import get_master_agent
+        agent = get_master_agent()
+        agent_status = {
+            "clinical": "active" if hasattr(agent, 'clinical_agent') and agent.clinical_agent else "unavailable",
+            "patent": "active" if hasattr(agent, 'patent_agent') and agent.patent_agent else "unavailable",
+            "market": "active" if hasattr(agent, 'market_agent') and agent.market_agent else "unavailable",
+            "trade": "unavailable"  # Not implemented
+        }
+    except Exception as e:
+        logger.warning(f"Could not determine agent status: {e}")
+        agent_status = {
+            "clinical": "unknown",
+            "patent": "unknown",
+            "market": "unknown",
+            "trade": "unavailable"
+        }
+
     return {
         "status": "healthy",
-        "agents": {
-            "market": "pending",
-            "clinical": "active",  # Not yet implemented
-            "patent": "pending",    # Not yet implemented
-            "trade": "pending"      # Not yet implemented
-        }
+        "agents": agent_status
     }
+
+@app.on_event("startup")
+async def startup_checks():
+    """Perform startup dependency and configuration checks"""
+    logger.info("="*60)
+    logger.info("MAESTRO Backend Starting Up")
+    logger.info("="*60)
+
+    # Check for API keys (warn if missing, don't crash)
+    api_keys = {
+        "GROQ_API_KEY": os.getenv("GROQ_API_KEY"),
+        "GOOGLE_API_KEY": os.getenv("GOOGLE_API_KEY"),
+        "SERPAPI_API_KEY": os.getenv("SERPAPI_API_KEY")
+    }
+
+    logger.info("API Key Configuration:")
+    for key_name, key_value in api_keys.items():
+        if key_value:
+            logger.info(f"  ✅ {key_name}: SET")
+        else:
+            logger.warning(f"  ⚠️  {key_name}: NOT SET - Some features may be limited")
+
+    # Check critical dependencies
+    logger.info("\nDependency Check:")
+    dependencies_status = []
+
+    try:
+        import fastapi
+        logger.info(f"  ✅ FastAPI: {fastapi.__version__}")
+        dependencies_status.append(("FastAPI", True))
+    except ImportError:
+        logger.error("  ❌ FastAPI: NOT INSTALLED")
+        dependencies_status.append(("FastAPI", False))
+
+    try:
+        import uvicorn
+        logger.info(f"  ✅ Uvicorn: {uvicorn.__version__}")
+        dependencies_status.append(("Uvicorn", True))
+    except ImportError:
+        logger.error("  ❌ Uvicorn: NOT INSTALLED")
+        dependencies_status.append(("Uvicorn", False))
+
+    try:
+        import requests
+        logger.info(f"  ✅ Requests: {requests.__version__}")
+        dependencies_status.append(("Requests", True))
+    except ImportError:
+        logger.warning("  ⚠️  Requests: NOT INSTALLED - API calls will fail")
+        dependencies_status.append(("Requests", False))
+
+    # Optional dependencies
+    logger.info("\nOptional Dependencies:")
+
+    try:
+        import chromadb
+        logger.info(f"  ✅ ChromaDB: Available (RAG enabled)")
+    except ImportError:
+        logger.warning("  ⚠️  ChromaDB: NOT INSTALLED - RAG features disabled")
+
+    try:
+        import sentence_transformers
+        logger.info(f"  ✅ Sentence Transformers: Available")
+    except ImportError:
+        logger.warning("  ⚠️  Sentence Transformers: NOT INSTALLED - Embeddings disabled")
+
+    # Agent initialization status
+    logger.info("\nAgent Status:")
+    try:
+        from agents.master_agent import MasterAgent
+        logger.info("  ✅ Master Agent: Available")
+        logger.info("  ✅ Clinical Agent: Integrated")
+        logger.info("  ✅ Patent Agent: Integrated")
+        logger.info("  ✅ Market Agent: Integrated")
+        logger.info("  ⚠️  Trade Agent: Not Implemented")
+    except ImportError as e:
+        logger.error(f"  ❌ Master Agent: Failed to import - {e}")
+
+    logger.info("\n" + "="*60)
+    logger.info("MAESTRO Backend Ready")
+    logger.info("API Endpoints: http://localhost:8000/docs")
+    logger.info("="*60 + "\n")
 
 # Import and include API routes
 from api.routes import router as api_router
