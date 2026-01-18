@@ -107,6 +107,9 @@ class PatentAgent:
             'A61K39': 'Medicinal preparations containing antigens or antibodies'
         }
 
+        # Track search failure state (for error reporting)
+        self._last_search_failed = False
+
         logger.info(f"Patent Agent initialized (USPTO: {self.uspto_client is not None}, Web: {self.use_web_search})")
 
     def extract_keywords(self, query: str) -> str:
@@ -241,10 +244,14 @@ class PatentAgent:
                 years_back=15  # Last 15 years
             )
             logger.info(f"Found {len(patents)} patents")
+            # Track successful search
+            self._last_search_failed = False
             return patents
 
         except Exception as e:
             logger.error(f"Patent search failed: {e}")
+            # Track that search failed (not just empty results)
+            self._last_search_failed = True
             return []
 
     def analyze_patent_landscape(
@@ -892,15 +899,27 @@ Use plain text, UPPERCASE for headers."""
             patents = self.search_patents(keywords, limit=100)
 
             if not patents:
-                logger.warning("No patents found")
-                return {
-                    "summary": f"No patents found for: {keywords}",
-                    "comprehensive_summary": "Unable to generate patent intelligence report due to lack of patent data.",
-                    "patents": [],
-                    "landscape": {},
-                    "fto_assessment": {"risk_level": "Unknown"},
-                    "confidence_score": 0.0
-                }
+                # Check if search failed vs returned empty results
+                if self._last_search_failed:
+                    logger.error("Patent search failed")
+                    return {
+                        "summary": f"Patent search failed for: {keywords}",
+                        "comprehensive_summary": "Unable to generate patent intelligence report due to search failure.",
+                        "patents": [],
+                        "landscape": {},
+                        "fto_assessment": {"risk_level": "Unknown"},
+                        "confidence_score": 0.0
+                    }
+                else:
+                    logger.warning("No patents found")
+                    return {
+                        "summary": f"No patents found for: {keywords}",
+                        "comprehensive_summary": "Unable to generate patent intelligence report due to lack of patent data.",
+                        "patents": [],
+                        "landscape": {},
+                        "fto_assessment": {"risk_level": "Unknown"},
+                        "confidence_score": 0.0
+                    }
 
             # Step 3: Analyze landscape
             logger.info("Step 3/7: Analyzing patent landscape")

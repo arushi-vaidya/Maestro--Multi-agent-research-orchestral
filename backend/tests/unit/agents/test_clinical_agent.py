@@ -167,6 +167,8 @@ class TestSummaryGeneration:
         mock_post.return_value = mock_response
 
         agent = ClinicalAgent()
+        # Set API key so agent tries Gemini
+        agent.gemini_api_key = "fake_gemini_key_for_testing"
         summary = agent.generate_comprehensive_summary(
             mock_clinical_trials_response,
             "GLP-1 diabetes"

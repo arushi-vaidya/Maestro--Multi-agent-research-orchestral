@@ -116,7 +116,7 @@ class MasterAgent:
         ]
 
         # General clinical terms
-        general_clinical_keywords = ['trial', 'patient', 'study']
+        general_clinical_keywords = ['trial', 'patient', 'study', 'clinical']
 
         # Literature-specific keywords
         literature_keywords = [
