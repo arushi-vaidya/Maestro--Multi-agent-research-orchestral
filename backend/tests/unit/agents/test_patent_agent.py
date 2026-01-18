@@ -1,6 +1,6 @@
 """
 Unit Tests for Patent Agent
-Tests all methods with mocked external APIs (USPTO, Groq, Gemini)
+Tests all methods with mocked external APIs (Lens.org, Groq, Gemini)
 """
 import pytest
 from unittest.mock import Mock, patch, MagicMock
@@ -106,27 +106,27 @@ class TestKeywordExtraction:
 
 
 class TestPatentSearch:
-    """Test patent search with mocked USPTO API"""
+    """Test patent search with mocked Lens.org API"""
 
-    def test_search_patents_no_uspto_client(self):
-        """Test behavior when USPTO client is not available"""
-        with patch('agents.patent_agent.USPTO_AVAILABLE', False):
+    def test_search_patents_no_patent_client(self):
+        """Test behavior when Lens.org client is not available"""
+        with patch('agents.patent_agent.PATENT_CLIENT_AVAILABLE', False):
             agent = PatentAgent(use_web_search=False)
             patents = agent.search_patents("GLP-1", limit=10)
 
             assert patents == []
 
-    @patch('agents.patent_agent.USPTOClient')
+    @patch('agents.patent_agent.LensOrgClient')
     def test_search_patents_success(self, mock_uspto_class, mock_uspto_patents_response):
         """Test successful patent search"""
-        # Mock USPTO client
+        # Mock Lens.org client
         mock_client = Mock()
         mock_client.search_by_keywords.return_value = mock_uspto_patents_response
         mock_uspto_class.return_value = mock_client
 
-        with patch('agents.patent_agent.USPTO_AVAILABLE', True):
+        with patch('agents.patent_agent.PATENT_CLIENT_AVAILABLE', True):
             agent = PatentAgent(use_web_search=False)
-            agent.uspto_client = mock_client
+            agent.patent_client = mock_client
 
             patents = agent.search_patents("GLP-1", limit=100)
 
@@ -135,23 +135,23 @@ class TestPatentSearch:
             assert patents[0]["patent_number"] == "US11234567B2"
             assert "GLP-1" in patents[0]["patent_title"]
 
-            # Verify USPTO client was called correctly
+            # Verify Lens.org client was called correctly
             mock_client.search_by_keywords.assert_called_once_with(
                 keywords="GLP-1",
                 limit=100,
                 years_back=15
             )
 
-    @patch('agents.patent_agent.USPTOClient')
+    @patch('agents.patent_agent.LensOrgClient')
     def test_search_patents_api_failure(self, mock_uspto_class):
-        """Test handling of USPTO API failure"""
+        """Test handling of Lens.org API failure"""
         mock_client = Mock()
-        mock_client.search_by_keywords.side_effect = Exception("USPTO API Error")
+        mock_client.search_by_keywords.side_effect = Exception("Lens.org API Error")
         mock_uspto_class.return_value = mock_client
 
-        with patch('agents.patent_agent.USPTO_AVAILABLE', True):
+        with patch('agents.patent_agent.PATENT_CLIENT_AVAILABLE', True):
             agent = PatentAgent(use_web_search=False)
-            agent.uspto_client = mock_client
+            agent.patent_client = mock_client
 
             patents = agent.search_patents("GLP-1")
 
@@ -240,7 +240,7 @@ class TestFTOAssessment:
 class TestExpiringPatents:
     """Test expiring patent analysis"""
 
-    @patch('agents.patent_agent.USPTOClient')
+    @patch('agents.patent_agent.LensOrgClient')
     def test_analyze_expiring_patents_success(self, mock_uspto_class):
         """Test expiring patent analysis"""
         mock_client = Mock()
@@ -253,9 +253,9 @@ class TestExpiringPatents:
             }
         ]
 
-        with patch('agents.patent_agent.USPTO_AVAILABLE', True):
+        with patch('agents.patent_agent.PATENT_CLIENT_AVAILABLE', True):
             agent = PatentAgent(use_web_search=False)
-            agent.uspto_client = mock_client
+            agent.patent_client = mock_client
 
             result = agent.analyze_expiring_patents("GLP-1", years_from_now=3)
 
@@ -266,9 +266,9 @@ class TestExpiringPatents:
             assert result["count"] == 1
 
     def test_analyze_expiring_patents_no_uspto(self):
-        """Test behavior when USPTO client unavailable"""
+        """Test behavior when Lens.org client unavailable"""
         agent = PatentAgent(use_web_search=False)
-        agent.uspto_client = None
+        agent.patent_client = None
 
         result = agent.analyze_expiring_patents("GLP-1")
 
@@ -405,7 +405,7 @@ class TestComprehensiveSummary:
 class TestProcessMethod:
     """Test main process() method"""
 
-    @patch('agents.patent_agent.USPTOClient')
+    @patch('agents.patent_agent.LensOrgClient')
     @patch('requests.post')
     def test_process_full_flow(self, mock_post, mock_uspto_class, mock_uspto_patents_response):
         """Test complete process flow"""
@@ -427,14 +427,14 @@ class TestProcessMethod:
 
         mock_post.side_effect = [keyword_response, summary_response]
 
-        # Mock USPTO client
+        # Mock Lens.org client
         mock_client = Mock()
         mock_client.search_by_keywords.return_value = mock_uspto_patents_response
         mock_client.search_expiring_patents.return_value = []
 
-        with patch('agents.patent_agent.USPTO_AVAILABLE', True):
+        with patch('agents.patent_agent.PATENT_CLIENT_AVAILABLE', True):
             agent = PatentAgent(use_web_search=False)
-            agent.uspto_client = mock_client
+            agent.patent_client = mock_client
 
             result = agent.process("What is the GLP-1 patent landscape?")
 
@@ -450,15 +450,15 @@ class TestProcessMethod:
             # Verify FTO assessment exists
             assert result["fto_assessment"]["risk_level"] in ["Low", "Medium", "High"]
 
-    @patch('agents.patent_agent.USPTOClient')
+    @patch('agents.patent_agent.LensOrgClient')
     def test_process_no_patents_found(self, mock_uspto_class):
         """Test process when no patents are found"""
         mock_client = Mock()
         mock_client.search_by_keywords.return_value = []
 
-        with patch('agents.patent_agent.USPTO_AVAILABLE', True):
+        with patch('agents.patent_agent.PATENT_CLIENT_AVAILABLE', True):
             agent = PatentAgent(use_web_search=False)
-            agent.uspto_client = mock_client
+            agent.patent_client = mock_client
 
             result = agent.process("NonexistentDrug12345")
 
@@ -467,15 +467,15 @@ class TestProcessMethod:
             assert result["fto_assessment"]["risk_level"] == "Unknown"
             assert result["confidence_score"] == 0.0
 
-    @patch('agents.patent_agent.USPTOClient')
+    @patch('agents.patent_agent.LensOrgClient')
     def test_process_handles_exceptions(self, mock_uspto_class):
         """Test that process handles exceptions gracefully"""
         mock_client = Mock()
-        mock_client.search_by_keywords.side_effect = Exception("USPTO Error")
+        mock_client.search_by_keywords.side_effect = Exception("Lens.org Error")
 
-        with patch('agents.patent_agent.USPTO_AVAILABLE', True):
+        with patch('agents.patent_agent.PATENT_CLIENT_AVAILABLE', True):
             agent = PatentAgent(use_web_search=False)
-            agent.uspto_client = mock_client
+            agent.patent_client = mock_client
 
             result = agent.process("GLP-1")
 
@@ -494,11 +494,11 @@ class TestErrorHandling:
             agent = PatentAgent(use_web_search=False)
             assert agent is not None
 
-    def test_agent_without_uspto_client(self):
-        """Test agent works without USPTO client"""
-        with patch('agents.patent_agent.USPTO_AVAILABLE', False):
+    def test_agent_without_patent_client(self):
+        """Test agent works without Lens.org client"""
+        with patch('agents.patent_agent.PATENT_CLIENT_AVAILABLE', False):
             agent = PatentAgent(use_web_search=False)
-            assert agent.uspto_client is None
+            assert agent.patent_client is None
 
             # Should still be able to call methods
             patents = agent.search_patents("GLP-1")

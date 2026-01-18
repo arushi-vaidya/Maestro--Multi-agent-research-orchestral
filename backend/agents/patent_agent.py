@@ -20,12 +20,12 @@ try:
 except ImportError:
     LLM_AVAILABLE = False
 
-# Import USPTO client
+# Import patent client (Lens.org - works from Indian servers)
 try:
-    from data_sources.patents import USPTOClient
-    USPTO_AVAILABLE = True
+    from data_sources.patents import LensOrgClient
+    PATENT_CLIENT_AVAILABLE = True
 except ImportError:
-    USPTO_AVAILABLE = False
+    PATENT_CLIENT_AVAILABLE = False
 
 # Import utilities
 try:
@@ -48,7 +48,7 @@ class PatentAgent:
     Patent Intelligence Agent
 
     Features:
-    - Patent landscape analysis using USPTO PatentsView API
+    - Patent landscape analysis using Lens.org Patents API
     - Freedom-to-Operate (FTO) assessment
     - Patent expiration cliff analysis
     - Key player identification
@@ -56,6 +56,8 @@ class PatentAgent:
     - Litigation risk assessment
     - LLM-powered comprehensive summaries
     - Confidence scoring
+
+    NOTE: Uses Lens.org instead of USPTO PatentsView (works from Indian servers)
     """
 
     def __init__(self, use_web_search: bool = True):
@@ -67,17 +69,17 @@ class PatentAgent:
         self.groq_api_key = os.getenv("GROQ_API_KEY", "")
         self.gemini_api_key = os.getenv("GOOGLE_API_KEY", "")
 
-        # Initialize USPTO client
-        if USPTO_AVAILABLE:
+        # Initialize patent client (Lens.org)
+        if PATENT_CLIENT_AVAILABLE:
             try:
-                self.uspto_client = USPTOClient()
-                logger.info("✅ USPTO PatentsView client initialized")
+                self.patent_client = LensOrgClient()
+                logger.info("✅ Lens.org Patents API client initialized")
             except Exception as e:
-                logger.error(f"USPTO client initialization failed: {e}")
-                self.uspto_client = None
+                logger.error(f"Lens.org client initialization failed: {e}")
+                self.patent_client = None
         else:
-            logger.warning("⚠️  USPTO client not available")
-            self.uspto_client = None
+            logger.warning("⚠️  Patent client not available (install Lens.org client)")
+            self.patent_client = None
 
         # Initialize web search (for patent landscape intelligence)
         self.use_web_search = use_web_search and WEB_SEARCH_AVAILABLE
@@ -110,7 +112,7 @@ class PatentAgent:
         # Track search failure state (for error reporting)
         self._last_search_failed = False
 
-        logger.info(f"Patent Agent initialized (USPTO: {self.uspto_client is not None}, Web: {self.use_web_search})")
+        logger.info(f"Patent Agent initialized (Lens.org: {self.patent_client is not None}, Web: {self.use_web_search})")
 
     def extract_keywords(self, query: str) -> str:
         """
@@ -170,8 +172,8 @@ class PatentAgent:
     
     def _sanitize_patent_keywords(self, keywords: str) -> str:
         """
-        Sanitize patent keywords for USPTO API.
-        
+        Sanitize patent keywords for patent search API.
+
         Removes:
         - Numbered lists (1., 2., etc.)
         - Bullet points
@@ -179,8 +181,8 @@ class PatentAgent:
         - Explanatory text
         - Multiple lines
         - Excess whitespace
-        
-        Returns clean keyword string suitable for USPTO search.
+
+        Returns clean keyword string suitable for patent search.
         """
         import re
         
@@ -210,7 +212,7 @@ class PatentAgent:
         # Collapse multiple spaces
         keywords = re.sub(r'\s+', ' ', keywords)
 
-        # Limit to 100 chars for USPTO API (strict enforcement)
+        # Limit to 100 chars for API efficiency (recommended)
         if len(keywords) > 100:
             # If too long, take first meaningful part (before comma if exists)
             parts = keywords.split(',')
@@ -223,7 +225,7 @@ class PatentAgent:
 
     def search_patents(self, keywords: str, limit: int = 100) -> List[Dict[str, Any]]:
         """
-        Search patents using USPTO PatentsView API
+        Search patents using Lens.org Patents API
 
         Args:
             keywords: Search keywords
@@ -232,13 +234,13 @@ class PatentAgent:
         Returns:
             List of patents
         """
-        if not self.uspto_client:
-            logger.error("USPTO client not available")
+        if not self.patent_client:
+            logger.error("Patent client not available")
             return []
 
         try:
-            logger.info(f"Searching USPTO patents for: {keywords}")
-            patents = self.uspto_client.search_by_keywords(
+            logger.info(f"Searching Lens.org patents for: {keywords}")
+            patents = self.patent_client.search_by_keywords(
                 keywords=keywords,
                 limit=limit,
                 years_back=15  # Last 15 years
@@ -347,13 +349,13 @@ class PatentAgent:
         Returns:
             Expiring patent analysis
         """
-        if not self.uspto_client:
+        if not self.patent_client:
             logger.error("USPTO client not available")
             return {"expiring_patents": [], "count": 0}
 
         try:
             logger.info(f"Searching for patents expiring in next {years_from_now} years")
-            expiring = self.uspto_client.search_expiring_patents(
+            expiring = self.patent_client.search_expiring_patents(
                 keywords=keywords,
                 years_from_now=years_from_now
             )
@@ -951,7 +953,7 @@ Use plain text, UPPERCASE for headers."""
             )
 
             # Calculate confidence score
-            confidence_score = 0.85  # Default confidence for USPTO data
+            confidence_score = 0.85  # Default confidence for patent data
             if self.confidence_scorer and patents:
                 try:
                     # Simple confidence based on data completeness
