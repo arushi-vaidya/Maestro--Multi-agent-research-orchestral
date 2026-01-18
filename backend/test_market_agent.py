@@ -17,10 +17,10 @@ logger = logging.getLogger(__name__)
 
 
 def test_market_agent_detailed():
-    """Detailed test with full JSON output"""
+    """Comprehensive test with full output inspection"""
 
     print("\n" + "="*70)
-    print("MARKET AGENT HYBRID - DETAILED TEST")
+    print("🧪 MARKET AGENT HYBRID: COMPREHENSIVE TEST")
     print("="*70 + "\n")
 
     # Check environment
@@ -113,10 +113,18 @@ def test_market_agent_detailed():
 
         print("📚 RAG RESULTS:")
         print(f"   Found: {len(result['rag_results'])} documents")
-        for i, rag_result in enumerate(result['rag_results'][:3], 1):
-            print(f"\n   [{i}] {rag_result['title']}")
-            print(f"       Source: {rag_result['source']}")
-            print(f"       Snippet: {rag_result['snippet'][:100]}...")
+        if result['rag_results']:
+            for i, rag_result in enumerate(result['rag_results'][:3], 1):
+                # FIXED: Access title from metadata, with fallback
+                title = rag_result.get('metadata', {}).get('title', 'Untitled Document')
+                doc_id = rag_result.get('id', 'N/A')
+                content_preview = rag_result.get('content', '')[:100]
+
+                print(f"\n   [{i}] {title}")
+                print(f"       Doc ID: {doc_id}")
+                print(f"       Preview: {content_preview}...")
+        else:
+            print("   ⚠️  No RAG results retrieved")
         print()
 
         print("📝 GENERATED SECTIONS:")

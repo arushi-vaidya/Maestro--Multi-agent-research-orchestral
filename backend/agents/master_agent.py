@@ -7,6 +7,7 @@ Future: Multi-agent coordination with LangGraph
 """
 from typing import Dict, Any, List
 import logging
+import os  # CRITICAL FIX: Added missing import
 from agents.clinical_agent import ClinicalAgent
 from agents.patent_agent import PatentAgent
 from agents.market_agent_hybrid import MarketAgentHybrid
@@ -37,17 +38,33 @@ class MasterAgent:
         )
         logger.info("Master Agent initialized with Clinical, Patent, and Market agents")
 
-    def _detect_query_type(self, query: str) -> str:
+    def _classify_query(self, query: str) -> List[str]:
         """
-        Detect query type based on keywords
+        Classify query to determine which agents to activate.
 
-        Args:
-            query: User query
+        Returns: List of agent IDs: ['market'], ['clinical'], ['patent'], or combination
 
-        Returns:
-            Query type: 'patent', 'market', 'clinical' (default)
+        Classification Logic:
+        - FTO/multi-dimensional queries: Always run market + clinical + patent agents
+        - Patent indicators: patent, ip, intellectual property, fto, licensing, patent landscape, etc.
+        - Market indicators: market, revenue, forecast, opportunity, landscape, CAGR, growth
+        - Clinical indicators: trial, phase, efficacy, safety, NCT, patient, endpoint, study
+        - Default: Both market and clinical agents (conservative approach for comprehensive coverage)
         """
         query_lower = query.lower()
+
+        # CRITICAL: FTO and multi-dimensional queries ALWAYS require all agents
+        # These queries need comprehensive IP/patent landscape AND clinical trial data AND market intelligence
+        multi_dimensional_keywords = [
+            'freedom to operate', 'fto', 'patent landscape', 'ip landscape',
+            'competitive intelligence', 'due diligence', 'investment analysis',
+            'strategic assessment', 'comprehensive analysis'
+        ]
+
+        is_multi_dimensional = any(kw in query_lower for kw in multi_dimensional_keywords)
+        if is_multi_dimensional:
+            logger.info("🎯 Query classified as: MULTI-DIMENSIONAL (FTO/Comprehensive) → ALL AGENTS")
+            return ['patent', 'market', 'clinical']
 
         # Patent-related keywords
         patent_keywords = [
@@ -57,64 +74,333 @@ class MasterAgent:
             'patent litigation', 'patent protection', 'exclusivity'
         ]
 
-        # Market-related keywords
+        # Strong market indicators
         market_keywords = [
-            'market', 'market size', 'market share', 'forecast', 'cagr',
-            'revenue', 'sales', 'commercial', 'pricing', 'reimbursement',
-            'competitive landscape', 'market dynamics', 'market opportunity',
-            'market analysis', 'market trends', 'market growth', 'market intelligence',
-            'blockbuster', 'peak sales', 'market leader', 'market outlook'
+            'market', 'revenue', 'forecast', 'opportunity', 'landscape',
+            'competitive', 'cagr', 'growth', 'sales', 'pricing', 'valuation',
+            'pipeline value', 'market size', 'market share', 'trends',
+            'drivers', 'outlook', 'analysis', 'intelligence'
         ]
 
-        if any(keyword in query_lower for keyword in patent_keywords):
-            return 'patent'
+        # Strong clinical indicators
+        clinical_keywords = [
+            'trial', 'clinical trial', 'phase', 'efficacy', 'safety',
+            'nct', 'patient', 'endpoint', 'study', 'adverse event',
+            'protocol', 'enrollment', 'recruiting', 'completed trial'
+        ]
 
-        if any(keyword in query_lower for keyword in market_keywords):
-            return 'market'
+        # Market-only phrases (exact matches) - but NOT if already multi-dimensional
+        market_only_keywords = [
+            'market opportunity', 'market analysis', 'competitive landscape',
+            'revenue forecast', 'market trends', 'market dynamics'
+        ]
 
-        # Default to clinical
-        return 'clinical'
+        has_patent = any(kw in query_lower for kw in patent_keywords)
+        has_market = any(kw in query_lower for kw in market_keywords)
+        has_clinical = any(kw in query_lower for kw in clinical_keywords)
+        is_market_only = any(kw in query_lower for kw in market_only_keywords)
+
+        # Decision logic
+        if is_market_only:
+            logger.info("🎯 Query classified as: MARKET ONLY")
+            return ['market']
+        elif has_patent and (has_market or has_clinical):
+            logger.info("🎯 Query classified as: PATENT + MARKET + CLINICAL")
+            return ['patent', 'market', 'clinical']
+        elif has_patent:
+            logger.info("🎯 Query classified as: PATENT ONLY")
+            return ['patent']
+        elif has_market and has_clinical:
+            logger.info("🎯 Query classified as: MARKET + CLINICAL")
+            return ['market', 'clinical']
+        elif has_market and not has_clinical:
+            logger.info("🎯 Query classified as: MARKET ONLY")
+            return ['market']
+        elif has_clinical and not has_market:
+            logger.info("🎯 Query classified as: CLINICAL ONLY")
+            return ['clinical']
+        else:
+            # Default: Run both for comprehensive coverage
+            logger.info("🎯 Query classified as: BOTH (default)")
+            return ['market', 'clinical']
 
     def process_query(self, query: str) -> Dict[str, Any]:
+        """
+        Process query with intelligent multi-agent routing.
+
+        Flow: Classification → Agent Execution → Result Fusion
+        """
+        from datetime import datetime
+
         logger.info("="*60)
         logger.info(f"🎼 Master Agent processing query: {query[:100]}...")
         logger.info("="*60)
-        print(f"🎼 Master Agent processing query: {query[:100]}...")
+        print(f"\n🎼 Master Agent processing query: {query[:100]}...")
 
-        # Detect query type
-        query_type = self._detect_query_type(query)
-        logger.info(f"🔍 Query type detected: {query_type}")
-        print(f"   🔍 Query type: {query_type}")
+        # Step 1: Classify query to determine which agents to run
+        active_agents = self._classify_query(query)
+        logger.info(f"📋 Classification result: {active_agents}")
+        print(f"📋 Classification result: {active_agents}")
 
-        if query_type == 'patent':
-            return self._process_patent_query(query)
-        elif query_type == 'market':
-            return self._process_market_query(query)
-        else:
-            return self._process_clinical_query(query)
+        # Step 2 & 3: Execute agents
+        results = {}
+        execution_status = []  # Track execution status for frontend
 
-    def _process_clinical_query(self, query: str) -> Dict[str, Any]:
-        """Process clinical trials query"""
-        logger.info("🏥 Delegating to Clinical Agent...")
-        print(f"   🏥 Calling Clinical Agent...")
+        if 'patent' in active_agents:
+            logger.info("⚖️ Delegating to Patent Agent...")
+            print(f"   ⚖️ Calling Patent Agent...")
+            start_time = datetime.now()
+            
+            # Add RUNNING status BEFORE execution
+            execution_status.append({
+                'agent_id': 'patent',
+                'status': 'running',
+                'started_at': start_time.isoformat(),
+                'completed_at': None,
+                'result_count': 0
+            })
+            
+            try:
+                patent_result = self._run_patent_agent(query)
+                results['patent'] = patent_result
+                patent_count = len(patent_result.get('references', []))
+                logger.info(f"✅ Patent Agent returned: {patent_count} patents")
+                print(f"   ✅ Patent Agent: {patent_count} patents")
+
+                # Update to COMPLETED status
+                execution_status[-1].update({
+                    'status': 'completed',
+                    'completed_at': datetime.now().isoformat(),
+                    'result_count': patent_count
+                })
+            except Exception as e:
+                logger.error(f"❌ Patent Agent FAILED: {e}", exc_info=True)
+                print(f"   ❌ Patent Agent FAILED: {e}")
+                execution_status[-1].update({
+                    'status': 'failed',
+                    'completed_at': datetime.now().isoformat(),
+                    'result_count': 0
+                })
+
+        if 'clinical' in active_agents:
+            logger.info("🏥 Delegating to Clinical Agent...")
+            print(f"   🏥 Calling Clinical Agent...")
+            start_time = datetime.now()
+            
+            # Add RUNNING status BEFORE execution
+            execution_status.append({
+                'agent_id': 'clinical',
+                'status': 'running',
+                'started_at': start_time.isoformat(),
+                'completed_at': None,
+                'result_count': 0
+            })
+            
+            try:
+                clinical_result = self._run_clinical_agent(query)
+                results['clinical'] = clinical_result
+                trial_count = clinical_result.get('total_trials', 0)
+                ref_count = len(clinical_result.get('references', []))
+                logger.info(f"✅ Clinical Agent returned: {trial_count} trials, {ref_count} references")
+                print(f"   ✅ Clinical Agent: {trial_count} trials, {ref_count} references")
+
+                # Update to COMPLETED status
+                execution_status[-1].update({
+                    'status': 'completed',
+                    'completed_at': datetime.now().isoformat(),
+                    'result_count': trial_count
+                })
+            except Exception as e:
+                logger.error(f"❌ Clinical Agent FAILED: {e}", exc_info=True)
+                print(f"   ❌ Clinical Agent FAILED: {e}")
+                execution_status[-1].update({
+                    'status': 'failed',
+                    'completed_at': datetime.now().isoformat(),
+                    'result_count': 0
+                })
+
+        if 'market' in active_agents:
+            logger.info("📊 Delegating to Market Agent...")
+            print(f"   📊 Calling Market Agent...")
+            start_time = datetime.now()
+            
+            # Add RUNNING status BEFORE execution
+            execution_status.append({
+                'agent_id': 'market',
+                'status': 'running',
+                'started_at': start_time.isoformat(),
+                'completed_at': None,
+                'result_count': 0
+            })
+            
+            try:
+                market_result = self._run_market_agent(query)
+                results['market'] = market_result
+                web_count = len(market_result.get('web_results', []))
+                rag_count = len(market_result.get('rag_results', []))
+                source_count = web_count + rag_count
+                logger.info(f"✅ Market Agent returned: {web_count} web sources, {rag_count} RAG docs")
+                print(f"   ✅ Market Agent: {web_count} web sources, {rag_count} RAG docs")
+
+                # Update to COMPLETED status
+                execution_status[-1].update({
+                    'status': 'completed',
+                    'completed_at': datetime.now().isoformat(),
+                    'result_count': source_count
+                })
+            except Exception as e:
+                logger.error(f"❌ Market Agent FAILED: {e}", exc_info=True)
+                print(f"   ❌ Market Agent FAILED: {e}")
+                execution_status[-1].update({
+                    'status': 'failed',
+                    'completed_at': datetime.now().isoformat(),
+                    'result_count': 0
+                })
+
+        # Step 3: Fuse results into unified response
+        logger.info(f"🔀 Fusing results from {len(results)} agent(s)...")
+        print(f"🔀 Fusing results from {len(results)} agent(s)...")
+        fused_response = self._fuse_results(query, results, execution_status)
+
+        # Log final response stats
+        total_refs = len(fused_response.get('references', []))
+        total_insights = len(fused_response.get('insights', []))
+        logger.info(f"✅ Master Agent completed: {total_refs} total references, {total_insights} insights")
+        print(f"✅ Master Agent completed: {total_refs} total references, {total_insights} insights")
+        logger.info("="*60)
+
+        return fused_response
+        results = {}
+        execution_status = []  # Track execution status for frontend
+
+        if 'clinical' in active_agents:
+            logger.info("🏥 Delegating to Clinical Agent...")
+            print(f"   🏥 Calling Clinical Agent...")
+            start_time = datetime.now()
+            
+            # Add RUNNING status BEFORE execution
+            execution_status.append({
+                'agent_id': 'clinical',
+                'status': 'running',
+                'started_at': start_time.isoformat(),
+                'completed_at': None,
+                'result_count': 0
+            })
+            
+            try:
+                clinical_result = self._run_clinical_agent(query)
+                results['clinical'] = clinical_result
+                trial_count = clinical_result.get('total_trials', 0)
+                ref_count = len(clinical_result.get('references', []))
+                logger.info(f"✅ Clinical Agent returned: {trial_count} trials, {ref_count} references")
+                print(f"   ✅ Clinical Agent: {trial_count} trials, {ref_count} references")
+
+                # Update to COMPLETED status
+                execution_status[-1].update({
+                    'status': 'completed',
+                    'completed_at': datetime.now().isoformat(),
+                    'result_count': trial_count
+                })
+            except Exception as e:
+                logger.error(f"❌ Clinical Agent FAILED: {e}", exc_info=True)
+                print(f"   ❌ Clinical Agent FAILED: {e}")
+                execution_status[-1].update({
+                    'status': 'failed',
+                    'completed_at': datetime.now().isoformat(),
+                    'result_count': 0
+                })
+
+        if 'market' in active_agents:
+            logger.info("📊 Delegating to Market Agent...")
+            print(f"   📊 Calling Market Agent...")
+            start_time = datetime.now()
+            
+            # Add RUNNING status BEFORE execution
+            execution_status.append({
+                'agent_id': 'market',
+                'status': 'running',
+                'started_at': start_time.isoformat(),
+                'completed_at': None,
+                'result_count': 0
+            })
+            
+            try:
+                market_result = self._run_market_agent(query)
+                results['market'] = market_result
+                web_count = len(market_result.get('web_results', []))
+                rag_count = len(market_result.get('rag_results', []))
+                source_count = web_count + rag_count
+                logger.info(f"✅ Market Agent returned: {web_count} web sources, {rag_count} RAG docs")
+                print(f"   ✅ Market Agent: {web_count} web sources, {rag_count} RAG docs")
+
+                # Update to COMPLETED status
+                execution_status[-1].update({
+                    'status': 'completed',
+                    'completed_at': datetime.now().isoformat(),
+                    'result_count': source_count
+                })
+            except Exception as e:
+                logger.error(f"❌ Market Agent FAILED: {e}", exc_info=True)
+                print(f"   ❌ Market Agent FAILED: {e}")
+                execution_status[-1].update({
+                    'status': 'failed',
+                    'completed_at': datetime.now().isoformat(),
+                    'result_count': 0
+                })
+
+        # Step 3: Fuse results into unified response
+        logger.info(f"🔀 Fusing results from {len(results)} agent(s)...")
+        print(f"🔀 Fusing results from {len(results)} agent(s)...")
+        fused_response = self._fuse_results(query, results, execution_status)
+
+        # Log final response stats
+        total_refs = len(fused_response.get('references', []))
+        total_insights = len(fused_response.get('insights', []))
+        logger.info(f"✅ Master Agent completed: {total_refs} total references, {total_insights} insights")
+        print(f"✅ Master Agent completed: {total_refs} total references, {total_insights} insights")
+        logger.info("="*60)
+
+        return fused_response
+
+    def _run_clinical_agent(self, query: str) -> Dict[str, Any]:
+        """Run Clinical Agent and return structured results"""
+        logger.info(f"🔬 Clinical Agent: Starting process for query: '{query}'")
 
         # Get clinical trials data
         clinical_result = self.clinical_agent.process(query)
-        
-        # Get detailed summaries for each trial
+
+        # DIAGNOSTIC: Log raw clinical agent response
+        logger.info(f"🔬 Clinical Agent raw response keys: {clinical_result.keys()}")
+        logger.info(f"🔬 Clinical Agent trials count from API: {len(clinical_result.get('trials', []))}")
+
+        # Fetch detailed summaries for each trial
         trial_count = len(clinical_result.get('trials', []))
-        logger.info(f"📄 Fetching detailed summaries for all {trial_count} trials...")
-        print(f"   📄 Fetching detailed summaries for trials...")
+
+        if trial_count == 0:
+            logger.warning(f"⚠️ Clinical Agent returned 0 trials! Raw response: {clinical_result}")
+            print(f"   ⚠️ WARNING: Clinical Agent returned 0 trials!")
+            return {
+                'summary': clinical_result.get('comprehensive_summary', 'No trials found'),
+                'comprehensive_summary': clinical_result.get('comprehensive_summary', 'No trials found'),
+                'trials': [],
+                'references': [],
+                'total_trials': 0
+            }
+
+        logger.info(f"📄 Fetching detailed summaries for {trial_count} trials...")
+        print(f"   📄 Fetching detailed summaries for {trial_count} trials...")
+
         references = []
         for i, trial in enumerate(clinical_result.get('trials', []), 1):
             try:
-                logger.info(f"   Fetching trial {i}/{trial_count}: {trial['nct_id']}")
+                if i <= 5:  # Log first 5 for debugging
+                    logger.info(f"   Fetching trial {i}/{trial_count}: {trial['nct_id']}")
                 trial_summary = self.clinical_agent.get_trial_summary(trial['nct_id'])
                 references.append({
                     "type": "clinical-trial",
                     "title": trial_summary['title'],
                     "source": f"ClinicalTrials.gov {trial_summary['nct_id']}",
-                    "date": "2024",  # You can extract actual date from trial details if needed
+                    "date": "2024",
                     "url": f"https://clinicaltrials.gov/study/{trial_summary['nct_id']}",
                     "relevance": 90,
                     "agentId": "clinical",
@@ -123,7 +409,6 @@ class MasterAgent:
                 })
             except Exception as e:
                 logger.warning(f"Failed to fetch summary for {trial['nct_id']}: {e}")
-                print(f"   ⚠️  Failed to fetch summary for {trial['nct_id']}: {e}")
                 references.append({
                     "type": "clinical-trial",
                     "title": trial['title'],
@@ -135,34 +420,37 @@ class MasterAgent:
                     "nct_id": trial['nct_id'],
                     "summary": "Summary unavailable"
                 })
-        
-        # Create insights
-        insights = [{
-            "agent": "Clinical Trials Agent",
-            "finding": clinical_result.get('comprehensive_summary', clinical_result.get('summary', 'No data available')),
-            "confidence": 95,
-            "total_trials": len(clinical_result.get('trials', []))
-        }]
-        
-        logger.info(f"✅ Master Agent completed processing")
-        logger.info(f"   Total trials found: {trial_count}")
-        logger.info(f"   Detailed summaries retrieved: {len(references)}")
-        logger.info("="*60)
-        
+
+        logger.info(f"✅ Clinical Agent wrapper completed: {len(references)} trial references created")
+
         return {
-            "summary": clinical_result.get('comprehensive_summary', clinical_result.get('summary', 'No data available')),
-            "insights": insights,
-            "recommendation": f"Review the {len(references)} detailed trial summaries below for comprehensive information.",
-            "timelineSaved": "6-8 hours",
-            "references": references,
-            "total_trials": len(clinical_result.get('trials', []))
+            'summary': clinical_result.get('comprehensive_summary', clinical_result.get('summary', '')),
+            'comprehensive_summary': clinical_result.get('comprehensive_summary', ''),
+            'trials': clinical_result.get('trials', []),
+            'references': references,
+            'total_trials': trial_count
         }
 
-    def _process_patent_query(self, query: str) -> Dict[str, Any]:
-        """Process patent intelligence query"""
-        logger.info("📄 Delegating to Patent Agent...")
-        print(f"   📄 Calling Patent Agent...")
+    def _run_market_agent(self, query: str) -> Dict[str, Any]:
+        """
+        Run Market Agent and return structured results
 
+        Retrieval Configuration:
+        - top_k_rag=15: Retrieve 15 internal knowledge base documents
+        - top_k_web=80: Retrieve 80 web sources (targets 25-30 after deduplication)
+        """
+        market_result = self.market_agent.process(query, top_k_rag=15, top_k_web=80)
+
+        web_count = len(market_result.get('web_results', []))
+        rag_count = len(market_result.get('rag_results', []))
+        logger.info(f"✅ Market Agent completed: {web_count} web sources, {rag_count} RAG docs, confidence {market_result['confidence']['score']:.2%}")
+
+        return market_result
+
+    def _run_patent_agent(self, query: str) -> Dict[str, Any]:
+        """Run Patent Agent and return structured results"""
+        logger.info(f"⚖️ Patent Agent: Starting process for query: '{query}'")
+        
         # Get patent intelligence data
         patent_result = self.patent_agent.process(query)
 
@@ -173,8 +461,7 @@ class MasterAgent:
         expiring_analysis = patent_result.get('expiring_analysis', {})
 
         # Create references from patents
-        logger.info(f"📄 Processing {len(patents)} patent records...")
-        print(f"   📄 Processing {len(patents)} patents...")
+        logger.info(f"⚖️ Processing {len(patents)} patent records...")
         references = []
         for i, patent in enumerate(patents[:20], 1):  # Top 20 patents
             assignees = [
@@ -197,155 +484,267 @@ class MasterAgent:
                     if patent.get('patent_abstract') else 'No abstract available'
             })
 
-        # Create insights
-        key_players = [p['organization'] for p in landscape.get('key_players', [])[:5]]
-        insights = [{
-            "agent": "Patent Intelligence Agent",
-            "finding": patent_result.get('comprehensive_summary', patent_result.get('summary', 'No data available')),
-            "confidence": int(patent_result.get('confidence_score', 0.85) * 100),
-            "total_patents": len(patents),
-            "fto_risk": fto_assessment.get('risk_level', 'Unknown'),
-            "litigation_risk": patent_result.get('litigation_risk', 'Unknown'),
-            "white_space_opportunities": len(patent_result.get('white_space', []))
-        }]
-
-        # Create strategic recommendations
-        recommendations = []
-        recommendations.append(f"Found {len(patents)} relevant patents in this technology space.")
-
-        if fto_assessment.get('risk_level') == 'High':
-            recommendations.append("⚠️ High FTO risk detected - detailed patent clearance recommended before proceeding.")
-        elif fto_assessment.get('risk_level') == 'Medium':
-            recommendations.append("⚠️ Moderate FTO risk - careful analysis of blocking patents required.")
-
-        if expiring_analysis.get('count', 0) > 0:
-            recommendations.append(f"📅 {expiring_analysis['count']} patents expiring in next 3 years - potential generic/biosimilar opportunities.")
-
-        if patent_result.get('white_space'):
-            recommendations.append(f"💡 {len(patent_result['white_space'])} white space opportunities identified for innovation.")
-
-        recommendation_text = " ".join(recommendations)
-
-        logger.info(f"✅ Master Agent completed patent processing")
-        logger.info(f"   Total patents found: {len(patents)}")
-        logger.info(f"   FTO Risk: {fto_assessment.get('risk_level', 'Unknown')}")
-        logger.info(f"   Key players: {', '.join(key_players[:3])}")
-        logger.info("="*60)
+        logger.info(f"✅ Patent Agent wrapper completed: {len(references)} patent references created")
 
         return {
-            "summary": patent_result.get('comprehensive_summary', patent_result.get('summary', 'No data available')),
-            "insights": insights,
-            "recommendation": recommendation_text,
-            "timelineSaved": "4-6 hours",
-            "references": references,
-            "total_patents": len(patents),
-            "landscape": landscape,
-            "fto_assessment": fto_assessment,
-            "patent_metrics": {
-                "total_patents": landscape.get('total_patents', 0),
-                "active_patents": landscape.get('active_patents', 0),
-                "key_players": key_players,
-                "fto_risk": fto_assessment.get('risk_level', 'Unknown'),
-                "litigation_risk": patent_result.get('litigation_risk', 'Unknown'),
-                "white_space": patent_result.get('white_space', []),
-                "expiring_count": expiring_analysis.get('count', 0)
-            }
+            'summary': patent_result.get('comprehensive_summary', patent_result.get('summary', '')),
+            'comprehensive_summary': patent_result.get('comprehensive_summary', ''),
+            'patents': patents,
+            'references': references,
+            'total_patents': len(patents),
+            'landscape': landscape,
+            'fto_assessment': fto_assessment,
+            'expiring_analysis': expiring_analysis
         }
 
-    def _process_market_query(self, query: str) -> Dict[str, Any]:
-        """Process market intelligence query"""
-        logger.info("📊 Delegating to Market Agent...")
-        print(f"   📊 Calling Market Agent...")
+        """
+        Fuse results from multiple agents into unified response.
 
-        # Get market intelligence data
-        market_result = self.market_agent.process(query)
+        Strategy:
+        - Preserve backward compatibility (existing fields unchanged)
+        - Add new fields (market_intelligence, confidence_score)
+        - Namespace market data separately (no flattening)
+        - Merge references with agentId for filtering
+        - Generate intelligent overview summary (LLM synthesis)
+        """
+        clinical_data = results.get('clinical', {})
+        market_data = results.get('market', {})
+        execution_status = execution_status or []
 
-        # Extract sections
-        sections = market_result.get('sections', {})
-        confidence = market_result.get('confidence', {})
-        web_results = market_result.get('web_results', [])
-        rag_results = market_result.get('rag_results', [])
+        # 1. BUILD OVERVIEW SUMMARY (Intelligent Synthesis)
+        summary = self._synthesize_overview_summary(query, clinical_data, market_data)
 
-        # Create references from web and RAG results
-        logger.info(f"📊 Processing {len(web_results)} web sources and {len(rag_results)} RAG documents...")
-        print(f"   📊 Processing {len(web_results)} web + {len(rag_results)} RAG sources...")
+        # 2. BUILD INSIGHTS ARRAY
+        insights = []
+
+        if clinical_data:
+            insights.append({
+                "agent": "Clinical Trials Agent",
+                "finding": clinical_data.get('comprehensive_summary', clinical_data.get('summary', '')),
+                "confidence": 95,
+                "total_trials": clinical_data.get('total_trials', 0)
+            })
+
+        if market_data:
+            insights.append({
+                "agent": "Market Intelligence Agent",
+                "finding": market_data['sections']['summary'],
+                "confidence": int(market_data['confidence']['score'] * 100),
+                "confidence_level": market_data['confidence']['level'],
+                "sources_used": {
+                    "web": len(market_data.get('web_results', [])),
+                    "internal": len(market_data.get('rag_results', []))
+                }
+            })
+
+        # 3. BUILD RECOMMENDATION
+        if clinical_data and market_data:
+            web_count = len(market_data.get('web_results', []))
+            rag_count = len(market_data.get('rag_results', []))
+            market_total = web_count + rag_count
+            recommendation = (
+                f"Review {len(clinical_data['references'])} clinical trials and "
+                f"{market_total} market intelligence sources ({web_count} web + {rag_count} internal)."
+            )
+        elif clinical_data:
+            recommendation = f"Review the {len(clinical_data['references'])} detailed trial summaries below."
+        elif market_data:
+            web_count = len(market_data.get('web_results', []))
+            rag_count = len(market_data.get('rag_results', []))
+            market_total = web_count + rag_count
+            recommendation = (
+                f"Review {market_total} market intelligence sources ({web_count} web + {rag_count} internal). "
+                f"Confidence: {market_data['confidence']['level']} ({market_data['confidence']['score']:.0%})."
+            )
+        else:
+            recommendation = "No recommendations available"
+
+        # 4. MERGE REFERENCES WITH STRICT SCHEMA ENFORCEMENT
         references = []
 
-        # Add web results
-        for i, result in enumerate(web_results[:15], 1):  # Top 15 web sources
-            references.append({
-                "type": "market-report",
-                "title": result.get('title', 'No title'),
-                "source": result.get('url', 'Unknown source'),
-                "date": result.get('date', 'N/A'),
-                "url": result.get('url', ''),
-                "relevance": 95 - i,  # Decreasing relevance
-                "agentId": "market",
-                "summary": result.get('snippet', 'No summary available')[:300]
-            })
+        # Add clinical references with defensive agentId check
+        if clinical_data:
+            clinical_refs = clinical_data.get('references', [])
+            for ref in clinical_refs:
+                # CRITICAL: Ensure every reference has agentId set
+                if 'agentId' not in ref or ref['agentId'] != 'clinical':
+                    logger.warning(f"Clinical reference missing or incorrect agentId: {ref.get('title', 'unknown')}")
+                    ref['agentId'] = 'clinical'
+                references.append(ref)
+            logger.info(f"Added {len(clinical_refs)} clinical references")
 
-        # Add RAG results
-        for i, result in enumerate(rag_results[:10], 1):  # Top 10 RAG documents
-            references.append({
-                "type": "market-report",
-                "title": result.get('title', 'Internal Document'),
-                "source": result.get('source', 'Internal Knowledge Base'),
-                "date": 'N/A',
-                "url": '',
-                "relevance": 80 - i,  # Decreasing relevance
-                "agentId": "market",
-                "summary": result.get('snippet', 'No summary available')[:300]
-            })
+        # Add market references (convert web results AND RAG results to reference format)
+        if market_data:
+            market_refs = []
 
-        # Create insights from market intelligence
-        insights = [{
-            "agent": "Market Intelligence Agent",
-            "finding": sections.get('summary', 'No data available'),
-            "confidence": int(confidence.get('score', 0.5) * 100),
-            "confidence_level": confidence.get('level', 'medium'),
-            "web_sources": len(web_results),
-            "rag_sources": len(rag_results)
-        }]
+            # Add web search results as references with domain tier quality indicator
+            for web_result in market_data.get('web_results', []):
+                url = web_result.get('url', '')
+                domain_tier = web_result.get('domain_tier', 2)
 
-        # Create recommendations based on market intelligence
-        recommendations = []
-        if sections.get('market_overview'):
-            recommendations.append("📈 Market overview analysis available in detailed sections.")
+                # Determine relevance score based on tier
+                relevance_map = {1: 95, 2: 85, 3: 70}
+                relevance = relevance_map.get(domain_tier, 85)
 
-        if sections.get('drivers_and_trends'):
-            recommendations.append("🔍 Key market drivers and trends identified.")
+                market_refs.append({
+                    "type": "market-report",
+                    "title": web_result.get('title', 'Market Intelligence Source'),
+                    "source": url.split('/')[2] if url else 'Web',
+                    "date": web_result.get('date', '2024'),
+                    "url": url,
+                    "relevance": relevance,
+                    "agentId": "market",
+                    "summary": web_result.get('snippet', ''),
+                    "domain_tier": domain_tier
+                })
 
-        if sections.get('competitive_landscape'):
-            recommendations.append("🏢 Competitive landscape analysis included.")
+            # CRITICAL: Also add RAG results as references (internal knowledge base)
+            for rag_result in market_data.get('rag_results', []):
+                market_refs.append({
+                    "type": "market-report",
+                    "title": rag_result.get('metadata', {}).get('title', 'Internal Market Intelligence'),
+                    "source": "Internal Knowledge Base",
+                    "date": rag_result.get('metadata', {}).get('date', '2024'),
+                    "url": "",
+                    "relevance": 90,
+                    "agentId": "market",
+                    "summary": rag_result.get('content', '')[:500]
+                })
 
-        if confidence.get('level') in ['high', 'very_high']:
-            recommendations.append(f"✅ High confidence ({confidence.get('score', 0)*100:.0f}%) - data quality is strong.")
-        elif confidence.get('level') == 'low':
-            recommendations.append(f"⚠️ Low confidence ({confidence.get('score', 0)*100:.0f}%) - consider additional data sources.")
+            references.extend(market_refs)
+            web_count = len(market_data.get('web_results', []))
+            rag_count = len(market_data.get('rag_results', []))
+            logger.info(f"Added {web_count} web + {rag_count} RAG = {len(market_refs)} total market references")
+            print(f"      → Market references: {web_count} web + {rag_count} RAG = {len(market_refs)} total")
 
-        recommendation_text = " ".join(recommendations) if recommendations else "Review market intelligence sections for detailed analysis."
+        # 5. CALCULATE AGGREGATE CONFIDENCE
+        if clinical_data and market_data:
+            aggregate_confidence = (95 + market_data['confidence']['score'] * 100) / 2
+        elif market_data:
+            aggregate_confidence = market_data['confidence']['score'] * 100
+        else:
+            aggregate_confidence = 95
 
-        logger.info(f"✅ Master Agent completed market intelligence processing")
-        logger.info(f"   Web sources: {len(web_results)}")
-        logger.info(f"   RAG sources: {len(rag_results)}")
-        logger.info(f"   Confidence: {confidence.get('score', 0):.2%} ({confidence.get('level', 'unknown')})")
-        logger.info("="*60)
-
-        return {
-            "summary": sections.get('summary', 'No market intelligence data available'),
+        # 6. BUILD UNIFIED RESPONSE
+        response = {
+            # Backward-compatible fields (existing API contract)
+            "summary": summary,
             "insights": insights,
-            "recommendation": recommendation_text,
-            "timelineSaved": "3-5 hours",
+            "recommendation": recommendation,
+            "timelineSaved": "6-8 hours",
             "references": references,
-            "market_sections": {
-                "market_overview": sections.get('market_overview', ''),
-                "key_metrics": sections.get('key_metrics', ''),
-                "drivers_and_trends": sections.get('drivers_and_trends', ''),
-                "competitive_landscape": sections.get('competitive_landscape', ''),
-                "risks_and_opportunities": sections.get('risks_and_opportunities', ''),
-                "future_outlook": sections.get('future_outlook', '')
-            },
-            "confidence": confidence,
-            "web_sources_count": len(web_results),
-            "rag_sources_count": len(rag_results)
+
+            # New additive fields (non-breaking)
+            "confidence_score": aggregate_confidence,
+            "active_agents": list(results.keys()),
+            "agent_execution_status": execution_status,  # Detailed execution tracking for UI
+            "market_intelligence": market_data if market_data else None,
+            "patent_intelligence": results.get('patent', {}) if 'patent' in results else None,
+            "total_trials": clinical_data.get('total_trials', 0) if clinical_data else 0
         }
+
+        logger.info(f"🔀 Fusion complete: {len(references)} references, {len(insights)} insights")
+
+        return response
+                        
+                        payload = {
+                            "contents": [{
+                                "parts": [{"text": synthesis_prompt}]
+                            }],
+                            "generationConfig": {
+                                "temperature": 0.5,
+                                "maxOutputTokens": 2000
+                            }
+                        }
+                        
+                        response = requests.post(url, json=payload, timeout=60)
+                        
+                        # Check for rate limit error
+                        if response.status_code == 429:
+                            if attempt == 0:
+                                logger.warning(f"Gemini rate limit hit (attempt {attempt + 1}/2), retrying in 2s...")
+                                time.sleep(2)
+                                continue
+                            else:
+                                logger.warning("Gemini rate limit exhausted after retries, falling back to Groq")
+                                break
+                        
+                        response.raise_for_status()
+                        
+                        result = response.json()
+                        synthesized = result.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                        
+                        if synthesized and len(synthesized) > 100:
+                            logger.info("✅ Multi-agent overview synthesis completed with Gemini")
+                            return synthesized.strip()
+                        else:
+                            logger.warning("Gemini synthesis too short or empty")
+                            break
+                            
+                    except Exception as e:
+                        logger.error(f"Gemini synthesis attempt {attempt + 1} failed: {e}")
+                        if attempt == 0:
+                            time.sleep(1)
+                            continue
+                        break
+            
+            # Attempt 2: Fall back to Groq
+            groq_api_key = os.getenv('GROQ_API_KEY')
+            if groq_api_key:
+                try:
+                    logger.info("Attempting overview synthesis with Groq fallback...")
+                    
+                    from config.llm.llm_config_sync import generate_llm_response
+                    
+                    synthesis_prompt = f"""Synthesize a comprehensive overview from both clinical and market intelligence.
+
+Query: {query}
+
+Clinical Findings ({clinical_trial_count} trials):
+{clinical_summary[:2000]}
+
+Market Findings ({web_source_count} sources, {market_confidence} confidence):
+{market_summary[:2000]}
+
+Create a 200-300 word executive overview that combines both perspectives. Focus on actionable insights."""
+                    
+                    synthesized = generate_llm_response(
+                        prompt=synthesis_prompt,
+                        system_prompt="You are a pharmaceutical intelligence analyst. Synthesize clinical and market insights.",
+                        temperature=0.5,
+                        max_tokens=1500
+                    )
+                    
+                    if synthesized and len(synthesized) > 100:
+                        logger.info("✅ Multi-agent overview synthesis completed with Groq fallback")
+                        return synthesized.strip()
+                        
+                except Exception as e:
+                    logger.error(f"Groq fallback also failed: {e}")
+            
+            # Final fallback: Structured concatenation
+            logger.warning("All LLM synthesis failed, using structured concatenation")
+            return f"""**Overview: {query}**
+
+**Clinical Perspective** ({clinical_trial_count} trials analyzed):
+{clinical_summary[:1500]}
+
+**Market Perspective** ({web_source_count} sources, {market_confidence} confidence):
+{market_summary[:1500]}
+
+This analysis combines clinical trial evidence with market intelligence to provide comprehensive therapeutic insights."""
+        
+        # Only clinical data available
+        elif has_clinical and not has_market:
+            logger.info("📊 Clinical-only query - returning clinical summary")
+            return clinical_data.get('comprehensive_summary', clinical_data.get('summary', 'No clinical data available'))
+        
+        # Only market data available
+        elif has_market and not has_clinical:
+            logger.info("📊 Market-only query - returning market summary")
+            return market_data['sections']['summary']
+        
+        # No data from either agent
+        else:
+            logger.warning("⚠️ No data from any agent")
+            return "No data available from agents. Please check agent configurations and API keys."

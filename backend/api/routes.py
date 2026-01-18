@@ -4,7 +4,7 @@ Feature 1: Basic query processing endpoint
 """
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import logging
 
 # Import our Master Agent
@@ -42,6 +42,9 @@ class Insight(BaseModel):
     agent: str
     finding: str
     confidence: int
+    confidence_level: Optional[str] = None  # NEW: 'high', 'medium', 'low'
+    total_trials: Optional[int] = None      # NEW: For clinical agent
+    sources_used: Optional[Dict[str, int]] = None  # NEW: For market agent
 
 class Reference(BaseModel):
     type: str  # 'patent', 'paper', 'clinical-trial', 'market-report'
@@ -52,12 +55,38 @@ class Reference(BaseModel):
     relevance: int
     agentId: str
 
+class MarketIntelligence(BaseModel):
+    """Market intelligence data structure from Market Agent"""
+    agentId: str
+    query: str
+    sections: Dict[str, str]  # 7 sections: summary, market_overview, etc.
+    confidence: Dict[str, Any]  # score, breakdown, explanation, level
+    sources: Dict[str, List[str]]  # web URLs, internal doc IDs
+    web_results: Optional[List[Dict[str, Any]]] = None  # Contains domain_tier (int), domain_weight (float)
+    rag_results: Optional[List[Dict[str, Any]]] = None  # Contains metadata (dict), relevance_score (float)
+
+class AgentExecutionStatus(BaseModel):
+    """Agent execution status for real-time UI updates"""
+    agent_id: str
+    status: str  # 'running', 'completed', 'failed'
+    started_at: Optional[str] = None
+    completed_at: Optional[str] = None
+    result_count: Optional[int] = None  # trials for clinical, sources for market
+
 class QueryResponse(BaseModel):
+    # Existing fields (backward compatible)
     summary: str
     insights: List[Insight]
     recommendation: str
     timelineSaved: str
     references: List[Reference]
+
+    # NEW FIELDS (additive, non-breaking)
+    confidence_score: Optional[float] = None        # Aggregate confidence
+    active_agents: Optional[List[str]] = None       # ['clinical', 'market']
+    agent_execution_status: Optional[List[AgentExecutionStatus]] = None  # Detailed execution tracking
+    market_intelligence: Optional[MarketIntelligence] = None  # Full market data
+    total_trials: Optional[int] = None              # Clinical results count
 
 @router.post("/query", response_model=QueryResponse)
 def process_query(request: QueryRequest):

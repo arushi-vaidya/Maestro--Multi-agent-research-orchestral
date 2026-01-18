@@ -189,13 +189,15 @@ class MarketAgentHybrid:
 
         Args:
             query: User query
-            top_k_rag: Number of RAG documents to retrieve
-            top_k_web: Number of web results to retrieve
+            top_k_rag: Number of RAG documents to retrieve (default: 5)
+            top_k_web: Number of web results to retrieve (default: 10, but typically called with 80 for 25-30 final results)
 
         Returns:
             Structured JSON output following the contract
         """
         logger.info(f"📊 Processing query: {query[:100]}...")
+        logger.info(f"   📊 Retrieval config: top_k_rag={top_k_rag}, top_k_web={top_k_web}")
+        print(f"      📊 Market Agent: targeting {top_k_web} web sources, {top_k_rag} RAG docs")
 
         # Step 1: Query Analysis - determine retrieval strategy
         needs_fresh, needs_historical = self._analyze_query(query)
@@ -212,6 +214,7 @@ class MarketAgentHybrid:
             search_keywords = self._extract_search_keywords(query)
             web_results = self._retrieve_from_web(search_keywords, top_k_web)
             logger.info(f"   🌐 Web search: {len(web_results)} results")
+            print(f"      🌐 Web search returned: {len(web_results)} results")
 
         # RAG Layer (SECOND)
         if self.use_rag and needs_historical:
@@ -239,7 +242,7 @@ class MarketAgentHybrid:
                 web_results=web_results,
                 rag_results=rag_results,
                 sections=sections,
-                coherence_boost=coherence_boost  # Pass reconciliation boost
+                coherence_boost=coherence_boost
             )
         else:
             # Fallback to simple confidence
@@ -260,18 +263,19 @@ class MarketAgentHybrid:
                 "rag": len(rag_results) > 0
             },
             "search_keywords": search_keywords,
-            "web_results": [self._format_web_result(r) for r in web_results],
-            "rag_results": [self._format_rag_result(r) for r in rag_results],
+            "web_results": web_results,  # CRITICAL: Return ALL web results (not formatted), Master Agent will convert to references
+            "rag_results": rag_results,   # CRITICAL: Return ALL RAG results (not formatted), Master Agent will convert to references
             "sections": sections,
-            "confidence": confidence_analysis,  # New: Full confidence object
-            "confidence_score": confidence_analysis["score"],  # Legacy: For backward compat
+            "confidence": confidence_analysis,
+            "confidence_score": confidence_analysis["score"],
             "sources": {
                 "web": [r["url"] for r in web_results if "url" in r],
                 "internal": [r.get("id", "") for r in rag_results]
             }
         }
 
-        logger.info(f"✅ Query processed (confidence: {confidence_analysis['score']:.2%} - {confidence_analysis['level']})")
+        logger.info(f"✅ Query processed: {len(web_results)} web + {len(rag_results)} RAG sources, confidence: {confidence_analysis['score']:.2%} ({confidence_analysis['level']})")
+        print(f"      ✅ Market Agent complete: {len(web_results)} web + {len(rag_results)} RAG sources")
         return output
 
     def _analyze_query(self, query: str) -> Tuple[bool, bool]:
@@ -321,14 +325,14 @@ class MarketAgentHybrid:
         # Try LLM extraction first
         llm_keywords = None
         try:
-            prompt = f"""Extract 2-4 concise search keywords for a web search about this market intelligence query:
+            prompt = f"""Extract 4-6 concise search keywords for a web search about this market intelligence query:
 
 Query: {query}
 
 Return ONLY the keywords as a comma-separated list, nothing else.
-Focus on: therapy areas, drug names, companies, market terms.
+Focus on: therapy areas, drug names, companies, market terms, market size, forecasts.
 
-Example output: GLP-1 market size, Novo Nordisk revenue, diabetes drugs 2024"""
+Example output: GLP-1 market size, Novo Nordisk revenue, diabetes drugs 2024, GLP-1 forecast 2025, incretin therapy market"""
 
             response = generate_llm_response(
                 prompt=prompt,
@@ -391,34 +395,66 @@ Example output: GLP-1 market size, Novo Nordisk revenue, diabetes drugs 2024"""
         Retrieve fresh market data from web search using multi-query approach
 
         New approach (vs legacy):
-        - Uses 3-5 keyword queries per request (was 1-2)
+        - Uses 3-6 keyword queries per request (was 1-2)
         - Applies domain filtering and weighting
         - Prioritizes Tier 1 pharma intelligence sources
         - Better deduplication and ranking
+        - Returns top_k results (typically 80 → ~25-30 after dedup)
         """
         if not keywords:
+            logger.warning("No keywords provided for web search")
             return []
+
+        num_keywords = min(len(keywords), 6)  # Use up to 6 keywords for broader coverage
+        num_per_query = max(8, top_k // num_keywords)  # At least 8 results per keyword
+
+        logger.info(f"   🌐 Web search config: {num_keywords} keywords × {num_per_query} results/keyword = ~{num_keywords * num_per_query} raw results → target {top_k} final")
+        print(f"         → Using {num_keywords} keywords: {keywords[:num_keywords]}")
 
         # Use the new multi-query search method
         try:
             results = self.web_search.search_multi_query(
-                queries=keywords[:5],  # Use up to 5 keywords (was 2)
-                num_results_per_query=max(3, top_k // len(keywords[:5])),
-                time_filter="year"  # Prefer recent results
+                queries=keywords[:6],
+                num_results_per_query=num_per_query,
+                time_filter="year"
             )
 
             # Results are already deduplicated and weighted by search_multi_query
-            logger.info(f"Web search retrieved {len(results)} results from {len(keywords[:5])} queries")
+            final_count = min(len(results), top_k)
+            logger.info(f"   🌐 Web search retrieved {len(results)} unique results (after dedup), returning top {final_count}")
+            print(f"         → Retrieved {len(results)} unique results, returning top {final_count}")
             return results[:top_k]
 
         except Exception as e:
-            logger.error(f"Multi-query web search failed: {e}")
+            logger.error(f"Multi-query web search failed: {e}", exc_info=True)
+            print(f"         ❌ Web search error: {e}")
             return []
 
     def _retrieve_from_rag(self, query: str, top_k: int) -> List[Dict[str, Any]]:
-        """Retrieve historical context from internal RAG"""
+        """
+        Retrieve historical context from internal RAG
+
+        Returns: List of dicts with structure:
+        {
+            'id': str,
+            'content': str,
+            'metadata': {
+                'title': str,
+                'date': str,
+                'source': str,
+                ...
+            },
+            'relevance_score': float
+        }
+        """
         try:
-            return self.rag_engine.search(query, top_k=top_k)
+            results = self.rag_engine.search(query, top_k=top_k)
+
+            # DIAGNOSTIC: Log structure of first result
+            if results:
+                logger.info(f"   📚 RAG result structure sample: {list(results[0].keys())}")
+
+            return results
         except Exception as e:
             logger.error(f"RAG retrieval failed: {e}")
             return []
@@ -523,93 +559,213 @@ Example output: GLP-1 market size, Novo Nordisk revenue, diabetes drugs 2024"""
         """
         Legacy synthesis method (kept for backward compatibility)
         Used when SectionSynthesizer module is unavailable
+
+        FIXED: Now generates real content using LLM instead of returning "Insufficient data"
         """
-        prompt = f"""You are a pharmaceutical market intelligence analyst. Based on the retrieved information, provide a comprehensive market analysis.
+        # DIAGNOSTIC: Log what we have
+        logger.info(f"📊 Legacy synthesis starting:")
+        logger.info(f"   Web results: {len(web_results)}")
+        logger.info(f"   RAG results: {len(rag_results)}")
+        logger.info(f"   Fused context length: {len(fused_context)} chars")
+        print(f"      📊 Synthesis input: {len(web_results)} web + {len(rag_results)} RAG = {len(fused_context)} chars context")
+        
+        # CRITICAL FIX: Check if we have ANY sources
+        if not web_results and not rag_results:
+            logger.error("❌ NO SOURCES AVAILABLE - Cannot synthesize")
+            print(f"      ❌ NO SOURCES - Check SERPAPI_KEY and RAG corpus")
+            return {
+                "summary": "No market intelligence sources available. Please verify SERPAPI_KEY is set and RAG corpus is initialized.",
+                "market_overview": "No data available - check web search and RAG configuration",
+                "key_metrics": "No data available - check web search and RAG configuration",
+                "drivers_and_trends": "No data available - check web search and RAG configuration",
+                "competitive_landscape": "No data available - check web search and RAG configuration",
+                "risks_and_opportunities": "No data available - check web search and RAG configuration",
+                "future_outlook": "No data available - check web search and RAG configuration"
+            }
+
+        if len(fused_context) < 100:
+            logger.warning(f"⚠️  Fused context very short ({len(fused_context)} chars) - synthesis may be poor quality")
+            print(f"      ⚠️  Warning: Very short context for synthesis")
+
+        # Build comprehensive prompt with sources
+        prompt = f"""You are a pharmaceutical market intelligence analyst. Based on the retrieved information below, provide a comprehensive market analysis.
 
 USER QUERY: {query}
 
 RETRIEVED INFORMATION:
-{fused_context}
+{fused_context[:8000]}
 
-Generate a structured market intelligence report with these sections:
+Generate a structured market intelligence report with these 7 sections. Each section should be 2-4 sentences with specific data from the sources.
 
-1. SUMMARY (2-3 sentences): High-level answer to the query
-2. MARKET_OVERVIEW: Current market size, CAGR, and key metrics
-3. KEY_METRICS: Specific numbers, forecasts, and data points
-4. DRIVERS_AND_TRENDS: Market drivers, trends, and dynamics
-5. COMPETITIVE_LANDSCAPE: Key players, market share, product landscape
-6. RISKS_AND_OPPORTUNITIES: Challenges and opportunities
-7. FUTURE_OUTLOOK: Forecasts and pipeline developments
+CRITICAL RULES:
+- Use ONLY information from retrieved sources above
+- Cite sources as [WEB-1], [RAG-2] after each fact
+- If a section truly lacks data, write 1-2 sentences explaining what's available
+- Be specific: include numbers, company names, drug names, market sizes, forecasts
+- Write in plain paragraph format (no bullet points, no markdown)
+- DO NOT say "insufficient data" - synthesize from what IS available
 
-IMPORTANT RULES:
-- Use ONLY information from the retrieved sources above
-- Cite source labels ([WEB-1], [RAG-2], etc.) after each fact
-- Prefer web sources for recent numbers and RAG sources for background
-- Do NOT hallucinate facts not present in the sources
-- If a section lacks data, write "Insufficient data in retrieved sources"
-- Be concise but comprehensive
+OUTPUT FORMAT (plain text, no JSON):
 
-Return your response as JSON with keys: summary, market_overview, key_metrics, drivers_and_trends, competitive_landscape, risks_and_opportunities, future_outlook"""
+SUMMARY
+[2-3 sentence high-level answer to the query, citing sources]
+
+MARKET OVERVIEW
+[Current market information, size, growth with citations from sources]
+
+KEY METRICS
+[Specific numbers: revenue, market share, growth rates with citations from sources]
+
+DRIVERS AND TRENDS
+[Key market drivers, trends from sources]
+
+COMPETITIVE LANDSCAPE
+[Major players, market positioning from sources]
+
+RISKS AND OPPORTUNITIES
+[Challenges and opportunities mentioned in sources]
+
+FUTURE OUTLOOK
+[Market forecasts, developments from sources]"""
 
         try:
+            logger.info("🤖 Calling LLM for market intelligence synthesis...")
+            print(f"      🤖 Generating synthesis with LLM...")
+            
             response = generate_llm_response(
                 prompt=prompt,
-                system_prompt="You are a market intelligence analyst. Return ONLY valid JSON, no markdown formatting.",
-                temperature=0.3,
-                max_tokens=1500
+                system_prompt="You are a market intelligence analyst. Output plain text with section headers, not JSON. Use the sources provided.",
+                temperature=0.4,
+                max_tokens=3000
             )
 
-            # Parse JSON response
-            try:
-                # Remove markdown code blocks if present
-                response = response.strip()
-                if response.startswith("```"):
-                    response = response.split("```")[1]
-                    if response.startswith("json"):
-                        response = response[4:]
-                response = response.strip()
+            logger.info(f"✅ LLM returned {len(response)} chars")
+            print(f"      ✅ LLM response: {len(response)} chars")
 
-                sections = json.loads(response)
-                return sections
+            # DIAGNOSTIC: Log first 200 chars of response
+            logger.info(f"   Response preview: {response[:200]}...")
 
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse LLM JSON response: {e}")
-                # Fallback: parse as plain text and structure manually
-                return self._fallback_structure(response)
+            # Parse plain text response into sections
+            sections = self._parse_plain_text_sections(response)
+
+            logger.info(f"📝 Parsed sections: {list(sections.keys())}")
+            print(f"      📝 Parsed {len(sections)} sections")
+
+            # Validate: ensure all 7 sections exist
+            required = ['summary', 'market_overview', 'key_metrics', 'drivers_and_trends',
+                       'competitive_landscape', 'risks_and_opportunities', 'future_outlook']
+            
+            for section in required:
+                if section not in sections or not sections[section].strip():
+                    logger.warning(f"⚠️  Section '{section}' empty or missing")
+                    # Use source snippets as fallback
+                    if web_results:
+                        fallback = f"Based on web sources: {web_results[0].get('snippet', '')[:200]}"
+                    elif rag_results:
+                        fallback = f"Based on internal sources: {rag_results[0].get('content', '')[:200]}"
+                    else:
+                        fallback = "Limited data available in retrieved sources for this section."
+                    sections[section] = fallback
+                else:
+                    logger.info(f"✓ Section '{section}': {len(sections[section])} chars")
+
+            logger.info(f"✅ Legacy synthesis complete: {len(sections)} sections populated")
+            print(f"      ✅ Synthesis complete: {len(sections)} sections")
+            return sections
 
         except Exception as e:
-            logger.error(f"LLM synthesis failed: {e}")
+            logger.error(f"❌ LLM synthesis FAILED: {e}", exc_info=True)
+            print(f"      ❌ LLM synthesis error: {e}")
+            logger.info("   Falling back to source snippets...")
             return self._create_fallback_sections(web_results, rag_results)
 
-    def _fallback_structure(self, text: str) -> Dict[str, str]:
-        """Structure plain text response into sections"""
-        return {
-            "summary": text[:500] if text else "Analysis unavailable",
-            "market_overview": "See summary",
-            "key_metrics": "See summary",
-            "drivers_and_trends": "See summary",
-            "competitive_landscape": "See summary",
-            "risks_and_opportunities": "See summary",
-            "future_outlook": "See summary"
-        }
+    def _parse_plain_text_sections(self, text: str) -> Dict[str, str]:
+        """
+        Parse plain text LLM output into section dict
+
+        Looks for section headers like "SUMMARY", "MARKET OVERVIEW", etc.
+        """
+        import re
+
+        logger.info("📄 Parsing plain text into sections...")
+        sections = {}
+
+        # Define section headers (case-insensitive, more flexible patterns)
+        section_headers = [
+            ('summary', r'SUMMARY|^Summary'),
+            ('market_overview', r'MARKET\s+OVERVIEW|Market Overview'),
+            ('key_metrics', r'KEY\s+METRICS|Key Metrics'),
+            ('drivers_and_trends', r'DRIVERS?\s+AND\s+TRENDS?|Drivers and Trends'),
+            ('competitive_landscape', r'COMPETITIVE\s+LANDSCAPE|Competitive Landscape'),
+            ('risks_and_opportunities', r'RISKS?\s+AND\s+OPPORTUNITIES|Risks and Opportunities'),
+            ('future_outlook', r'FUTURE\s+OUTLOOK|Future Outlook')
+        ]
+
+        # Split text by section headers
+        for key, header_pattern in section_headers:
+            # Find content between this header and next header (or end)
+            # More flexible: allows for colons, line breaks, etc.
+            pattern = rf'(?:{header_pattern})\s*:?\s*\n+(.*?)(?=\n+(?:SUMMARY|MARKET|KEY|DRIVERS?|COMPETITIVE|RISKS?|FUTURE)|$)'
+            match = re.search(pattern, text, re.IGNORECASE | re.DOTALL)
+
+            if match:
+                content = match.group(1).strip()
+                # Clean up: remove extra blank lines
+                content = re.sub(r'\n{3,}', '\n\n', content)
+                sections[key] = content
+                logger.info(f"   ✓ Parsed '{key}': {len(content)} chars")
+            else:
+                logger.warning(f"   ✗ Could not parse section: {key}")
+
+        # FALLBACK: If parsing completely failed, try to extract ANY content
+        if not sections and len(text) > 100:
+            logger.warning("⚠️  Section parsing failed completely, using full text as summary")
+            sections['summary'] = text[:500]
+            sections['market_overview'] = text[500:1000] if len(text) > 500 else "See summary"
+            sections['key_metrics'] = "See summary"
+            sections['drivers_and_trends'] = "See summary"
+            sections['competitive_landscape'] = "See summary"
+            sections['risks_and_opportunities'] = "See summary"
+            sections['future_outlook'] = "See summary"
+
+        return sections
 
     def _create_fallback_sections(
         self,
         web_results: List[Dict],
         rag_results: List[Dict]
     ) -> Dict[str, str]:
-        """Create basic sections when LLM synthesis fails"""
-        web_summary = " ".join([r.get("snippet", "")[:200] for r in web_results[:2]])
-        rag_summary = " ".join([r["content"][:200] for r in rag_results[:2]])
+        """Create basic sections when LLM synthesis fails - use actual source content"""
+        logger.info("🔄 Creating fallback sections from source snippets...")
+        
+        # Extract meaningful snippets from sources
+        web_snippets = []
+        for r in web_results[:5]:  # Use top 5 web results
+            snippet = r.get("snippet", "")
+            if snippet and len(snippet) > 50:
+                web_snippets.append(snippet)
+        
+        rag_snippets = []
+        for r in rag_results[:3]:  # Use top 3 RAG results
+            content = r.get("content", "")
+            if content and len(content) > 50:
+                rag_snippets.append(content[:300])
+        
+        web_summary = " ".join(web_snippets[:2]) if web_snippets else ""
+        rag_summary = " ".join(rag_snippets[:2]) if rag_snippets else ""
+        
+        combined_summary = web_summary or rag_summary or "Limited market intelligence data available."
 
+        logger.info(f"   Fallback summary: {len(combined_summary)} chars from {len(web_results)} web + {len(rag_results)} RAG sources")
+        
         return {
-            "summary": web_summary or rag_summary or "Analysis unavailable",
-            "market_overview": web_summary,
-            "key_metrics": "LLM synthesis unavailable",
-            "drivers_and_trends": rag_summary,
-            "competitive_landscape": "See retrieved sources",
-            "risks_and_opportunities": "See retrieved sources",
-            "future_outlook": "See retrieved sources"
+            "summary": combined_summary[:500],
+            "market_overview": web_summary[:400] if web_summary else "Market data retrieved from sources",
+            "key_metrics": "Specific metrics available in source documents cited in references",
+            "drivers_and_trends": rag_summary[:400] if rag_summary else "Trends available in source documents",
+            "competitive_landscape": "Competitive information available in referenced sources",
+            "risks_and_opportunities": "Risk and opportunity analysis available in source documents",
+            "future_outlook": "Market forecasts available in referenced sources. Review individual references for details."
         }
 
     def _format_web_result(self, result: Dict[str, Any]) -> Dict[str, str]:

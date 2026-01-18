@@ -29,7 +29,7 @@ class ClinicalAgent:
             "messages": [
                 {
                     "role": "system",
-                    "content": "You are a medical keyword extractor for clinical trials search. Extract ONLY medical, clinical, and therapeutic keywords from the query. EXCLUDE business terms like 'market', 'opportunity', 'analysis', 'revenue', etc. Focus on: diseases, conditions, drugs, therapeutic areas, treatments. Return only the medical keywords separated by commas."
+                    "content": "Extract ONLY the medical/clinical search terms from the query. Return a clean, plain text query suitable for ClinicalTrials.gov API - NO bullet points, NO numbered lists, NO explanations, NO formatting. Examples: Input: 'GLP-1 market analysis' → Output: 'GLP-1'. Input: 'Phase 3 Alzheimer trials' → Output: 'Alzheimer disease phase 3'. Input: 'CRISPR gene therapy' → Output: 'CRISPR gene therapy'. Return ONLY the clean search string."
                 },
                 {
                     "role": "user",
@@ -44,25 +44,91 @@ class ClinicalAgent:
             response = requests.post(url, json=payload, headers=headers, timeout=10)
             response.raise_for_status()
             keywords = response.json().get("choices", [{}])[0].get("message", {}).get("content", "").strip()
+
+            # CRITICAL: Sanitize keywords - remove formatting, bullets, numbers
+            # ClinicalTrials.gov API requires clean plain text queries
+            keywords = self._sanitize_keywords(keywords)
+
             logger.info(f"Extracted keywords: '{keywords}'")
+            print(f"         → Sanitized keywords: '{keywords}'")
             return keywords or query
         except Exception as e:
             logger.error(f"Groq keyword extraction failed: {e}")
             print(f"Groq keyword extraction failed: {e}")
             logger.info(f"Falling back to original query: '{query}'")
-            return query
+            # Sanitize even the fallback
+            return self._sanitize_keywords(query)
 
-    def search_trials(self, keywords: str, page_size: int = 100000) -> dict:
+    def _sanitize_keywords(self, keywords: str) -> str:
+        """
+        Sanitize keyword extraction output for ClinicalTrials.gov API.
+
+        Removes:
+        - Bullet points (-, *, •)
+        - Numbered lists (1., 2., etc.)
+        - Formatting characters
+        - Explanatory text in parentheses
+        - Multiple lines (keep first line only)
+        - Excessive whitespace
+
+        Returns clean, plain text query.
+        """
+        import re
+
+        # Take only first line (in case LLM returns multiple lines)
+        keywords = keywords.split('\n')[0].strip()
+
+        # Remove bullet points and list markers
+        keywords = re.sub(r'^[\-\*\•]\s*', '', keywords)
+        keywords = re.sub(r'^\d+\.\s*', '', keywords)
+
+        # Remove markdown formatting
+        keywords = re.sub(r'\*\*', '', keywords)  # Bold
+        keywords = re.sub(r'\*', '', keywords)     # Italics
+        keywords = re.sub(r'`', '', keywords)      # Code
+
+        # Remove explanatory text in parentheses
+        keywords = re.sub(r'\([^)]*\)', '', keywords)
+
+        # Remove "Output:", "Keywords:", "Search:", etc.
+        keywords = re.sub(r'^(Output|Keywords?|Search|Query|Terms?):\s*', '', keywords, flags=re.IGNORECASE)
+
+        # Collapse multiple spaces
+        keywords = re.sub(r'\s+', ' ', keywords)
+
+        # Limit length (ClinicalTrials.gov recommends short queries)
+        if len(keywords) > 200:
+            keywords = keywords[:200].rsplit(' ', 1)[0]  # Cut at word boundary
+
+        return keywords.strip()
+
+    def search_trials(self, keywords: str, page_size: int = 1000) -> dict:
+        """
+        Search clinical trials using ClinicalTrials.gov API v2
+
+        Note: API has max pageSize of 1000. For comprehensive results,
+        we use 1000 (the maximum allowed).
+        """
         logger.info(f"Searching clinical trials for keywords: '{keywords}' (page_size={page_size})")
         url = "https://clinicaltrials.gov/api/v2/studies"
         params = {"query.term": keywords, "pageSize": page_size}
         logger.info(f"Making request to ClinicalTrials.gov API: {url}")
-        response = requests.get(url, params=params, timeout=100)
-        response.raise_for_status()
-        data = response.json()
-        trial_count = len(data.get('studies', []))
-        logger.info(f"Successfully retrieved {trial_count} clinical trials")
-        return data
+        logger.info(f"Request params: {params}")
+
+        try:
+            response = requests.get(url, params=params, timeout=100)
+            response.raise_for_status()
+            data = response.json()
+            trial_count = len(data.get('studies', []))
+            total_count = data.get('totalCount', 0)
+            logger.info(f"Successfully retrieved {trial_count} clinical trials (total available: {total_count})")
+            print(f"      → ClinicalTrials.gov API: {trial_count}/{total_count} trials")
+            return data
+        except Exception as e:
+            logger.error(f"ClinicalTrials.gov API error: {e}", exc_info=True)
+            print(f"      ❌ ClinicalTrials.gov API error: {e}")
+            # Return empty result structure
+            return {"studies": [], "totalCount": 0}
 
     def get_trial_details(self, nct_id: str) -> dict:
         logger.info(f"Fetching detailed information for trial: {nct_id}")
@@ -346,7 +412,7 @@ Trial {nct_id}:
     def _generate_with_gemini(self, keywords: str, total_trials: int, trials_text: str, trials_data: dict) -> str:
         """Generate summary using Google Gemini API"""
         logger.info("Attempting to generate summary with Gemini")
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={self.gemini_api_key}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key={self.gemini_api_key}"
         headers = {"Content-Type": "application/json"}
         
         prompt = f"""You are a medical research analyst conducting a comprehensive literature review. Analyze the following clinical trials data and provide a detailed, well-structured summary suitable for academic literature review.
@@ -539,19 +605,25 @@ REMEMBER: Output only plain text with headings in UPPERCASE, one blank line afte
         logger.info("="*50)
         logger.info(f"Starting ClinicalAgent process for query: '{user_query}'")
         logger.info("="*50)
-        
+        print(f"      🔬 Clinical Agent processing: '{user_query}'")
+
         # Step 1: Extract keywords
         logger.info("Step 1/4: Extracting keywords")
         keywords = self.extract_keywords(user_query)
-        
+        logger.info(f"      → Extracted keywords: '{keywords}'")
+        print(f"      → Keywords: '{keywords}'")
+
         # Step 2: Search trials
         logger.info("Step 2/4: Searching clinical trials")
         trials_result = self.search_trials(keywords)
-        
+        api_trial_count = len(trials_result.get('studies', []))
+        logger.info(f"      → API returned {api_trial_count} trials")
+        print(f"      → API returned {api_trial_count} trials")
+
         # Step 3: Generate comprehensive summary
         logger.info("Step 3/4: Generating comprehensive summary")
         comprehensive_summary = self.generate_comprehensive_summary(trials_result, keywords)
-        
+
         # Step 4: Prepare response
         logger.info("Step 4/4: Preparing final response")
         basic_summary = f"Found {len(trials_result.get('studies', []))} trials for: {keywords}"
