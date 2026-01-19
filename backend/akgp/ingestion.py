@@ -396,14 +396,19 @@ class IngestionEngine:
         created_nodes = []
         created_relationships = []
 
-        # 1. Create Evidence node in graph
+        # 1. Store polarity in evidence metadata for conflict reasoning
+        if not hasattr(evidence_node, 'metadata') or evidence_node.metadata is None:
+            evidence_node.metadata = {}
+        evidence_node.metadata['polarity'] = polarity
+
+        # 2. Create Evidence node in graph
         evidence_graph_id = self.graph.create_node(evidence_node)
         created_nodes.append(evidence_graph_id)
 
-        # 2. Track provenance
+        # 3. Track provenance
         self.provenance.record_provenance(evidence_node)
 
-        # 3. Extract drug/disease names from metadata
+        # 4. Extract drug/disease names from metadata
         # Clinical parser uses "interventions" and "conditions"
         # Other parsers may use "drug_mentions" and "disease_mentions"
         drug_mentions = (
@@ -436,7 +441,7 @@ class IngestionEngine:
         primary_drug = drug_mentions[0]
         primary_disease = disease_mentions[0]
 
-        # 4. Create or find Drug node
+        # 5. Create or find Drug node
         drug_node, drug_graph_id = self._get_or_create_drug(
             primary_drug,
             source=evidence_node.source
@@ -444,12 +449,15 @@ class IngestionEngine:
         created_nodes.append(drug_graph_id)
 
         # Store canonical ID in drug node metadata for future reference
-        if drug_graph_id not in [n for n in created_nodes[1:]]:  # If newly created
-            if not hasattr(drug_node, 'metadata') or drug_node.metadata is None:
-                drug_node.metadata = {}
+        # Always update metadata to include canonical_id
+        if not hasattr(drug_node, 'metadata') or drug_node.metadata is None:
+            drug_node.metadata = {}
+        if 'canonical_id' not in drug_node.metadata:
             drug_node.metadata['canonical_id'] = drug_id
+            # Update the node in the graph
+            self.graph.update_node(drug_graph_id, {'metadata': drug_node.metadata})
 
-        # 5. Create or find Disease node
+        # 6. Create or find Disease node
         disease_node, disease_graph_id = self._get_or_create_disease(
             primary_disease,
             source=evidence_node.source
@@ -457,12 +465,15 @@ class IngestionEngine:
         created_nodes.append(disease_graph_id)
 
         # Store canonical ID in disease node metadata for future reference
-        if disease_graph_id not in [n for n in created_nodes[1:-1]]:  # If newly created
-            if not hasattr(disease_node, 'metadata') or disease_node.metadata is None:
-                disease_node.metadata = {}
+        # Always update metadata to include canonical_id
+        if not hasattr(disease_node, 'metadata') or disease_node.metadata is None:
+            disease_node.metadata = {}
+        if 'canonical_id' not in disease_node.metadata:
             disease_node.metadata['canonical_id'] = disease_id
+            # Update the node in the graph
+            self.graph.update_node(disease_graph_id, {'metadata': disease_node.metadata})
 
-        # 6. Map polarity to RelationshipType
+        # 7. Map polarity to RelationshipType
         # Note: CONTRADICTS polarity doesn't create drug-disease relationship
         # (CONTRADICTS is for evidence-to-evidence relationships)
         relationship_type_map = {
@@ -473,7 +484,7 @@ class IngestionEngine:
 
         relationship_type = relationship_type_map.get(polarity, RelationshipType.SUGGESTS)
 
-        # 7. Create Drug → Disease relationship
+        # 8. Create Drug → Disease relationship
         rel = Relationship(
             relationship_type=relationship_type,
             source_id=drug_graph_id,
