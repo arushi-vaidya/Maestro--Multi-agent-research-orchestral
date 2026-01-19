@@ -14,6 +14,7 @@ import time
 from agents.clinical_agent import ClinicalAgent
 from agents.patent_agent import PatentAgent
 from agents.market_agent_hybrid import MarketAgentHybrid
+from agents.literature_agent import LiteratureAgent
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -39,7 +40,8 @@ class MasterAgent:
             use_web_search=True,
             initialize_corpus=False  # Avoid corpus initialization at startup
         )
-        logger.info("Master Agent initialized with Clinical, Patent, and Market agents")
+        self.literature_agent = LiteratureAgent()
+        logger.info("Master Agent initialized with Clinical, Patent, Market, and Literature agents")
 
     def _classify_query(self, query: str) -> List[str]:
         """
@@ -47,19 +49,24 @@ class MasterAgent:
 
         Returns: List of agent IDs: ['market'], ['clinical'], ['patent'], or combination
 
-        Classification Logic:
-        - FTO/multi-dimensional queries: Always run market + clinical + patent agents
-        - Patent indicators: patent, ip, intellectual property, fto, licensing, patent landscape, etc.
-        - Market indicators: market, revenue, forecast, opportunity, landscape, CAGR, growth
-        - Clinical indicators: trial, phase, efficacy, safety, NCT, patient, endpoint, study
-        - Default: Both market and clinical agents (conservative approach for comprehensive coverage)
+        Classification Logic (Deterministic Priority Order):
+        1. Multi-dimensional FTO queries → ALL AGENTS
+        2. Explicit multi-agent queries (e.g., "market and clinical") → SPECIFIED AGENTS
+        3. Single-agent indicators → SINGLE AGENT
+        4. Default → MARKET + CLINICAL (conservative)
+
+        Rules:
+        - Single-intent query → exactly one agent
+        - Multi-intent query → deterministic priority ordering
+        - No implicit fan-out
+        - No silent aggregation
         """
         query_lower = query.lower()
 
-        # CRITICAL: FTO and multi-dimensional queries ALWAYS require all agents
-        # These queries need comprehensive IP/patent landscape AND clinical trial data AND market intelligence
+        # 1. MULTI-DIMENSIONAL (FTO/Due Diligence) - requires ALL agents
+        # Note: "patent landscape" alone is NOT multi-dimensional (goes to patent only)
         multi_dimensional_keywords = [
-            'freedom to operate', 'fto', 'patent landscape', 'ip landscape',
+            'freedom to operate', 'fto', 'ip landscape',
             'competitive intelligence', 'due diligence', 'investment analysis',
             'strategic assessment', 'comprehensive analysis'
         ]
@@ -69,63 +76,125 @@ class MasterAgent:
             logger.info("🎯 Query classified as: MULTI-DIMENSIONAL (FTO/Comprehensive) → ALL AGENTS")
             return ['patent', 'market', 'clinical']
 
-        # Patent-related keywords
+        # 2. EXPLICIT MULTI-AGENT CONNECTIVES
+        # Detect explicit "X and Y" patterns for multi-agent queries
+        has_explicit_and = ' and ' in query_lower
+
+        # Patent-specific keywords (prioritized to avoid over-triggering)
         patent_keywords = [
-            'patent', 'ip', 'intellectual property', 'fto', 'freedom to operate',
-            'patent landscape', 'patent expir', 'licensing', 'patent cliff',
-            'white space', 'patent strategy', 'ip strategy', 'patent portfolio',
-            'patent litigation', 'patent protection', 'exclusivity'
+            'patent landscape', 'patent expir', 'patent cliff',
+            'patent strategy', 'ip strategy', 'patent portfolio',
+            'patent litigation', 'patent protection', 'exclusivity',
+            'white space', 'licensing'
         ]
 
-        # Strong market indicators
+        # More specific patent keywords that should NOT trigger other agents
+        patent_only_keywords = [
+            'patent landscape', 'patent expiration', 'patent cliff',
+            'patent portfolio', 'patent strategy'
+        ]
+
+        # General patent terms (may co-occur with market/clinical)
+        general_patent_keywords = ['patent', 'ip ', 'intellectual property']
+
+        # Market-specific keywords
         market_keywords = [
-            'market', 'revenue', 'forecast', 'opportunity', 'landscape',
-            'competitive', 'cagr', 'growth', 'sales', 'pricing', 'valuation',
-            'pipeline value', 'market size', 'market share', 'trends',
-            'drivers', 'outlook', 'analysis', 'intelligence'
-        ]
-
-        # Strong clinical indicators
-        clinical_keywords = [
-            'trial', 'clinical trial', 'phase', 'efficacy', 'safety',
-            'nct', 'patient', 'endpoint', 'study', 'adverse event',
-            'protocol', 'enrollment', 'recruiting', 'completed trial'
-        ]
-
-        # Market-only phrases (exact matches) - but NOT if already multi-dimensional
-        market_only_keywords = [
-            'market opportunity', 'market analysis', 'competitive landscape',
+            'market size', 'market share', 'revenue', 'forecast',
+            'cagr', 'growth rate', 'sales', 'pricing', 'valuation',
+            'pipeline value', 'market opportunity', 'market analysis',
             'revenue forecast', 'market trends', 'market dynamics'
         ]
 
-        has_patent = any(kw in query_lower for kw in patent_keywords)
-        has_market = any(kw in query_lower for kw in market_keywords)
-        has_clinical = any(kw in query_lower for kw in clinical_keywords)
-        is_market_only = any(kw in query_lower for kw in market_only_keywords)
+        # General market terms (may co-occur)
+        general_market_keywords = ['market', 'competitive', 'opportunity']
 
-        # Decision logic
-        if is_market_only:
-            logger.info("🎯 Query classified as: MARKET ONLY")
-            return ['market']
-        elif has_patent and (has_market or has_clinical):
-            logger.info("🎯 Query classified as: PATENT + MARKET + CLINICAL")
+        # Clinical-specific keywords
+        clinical_keywords = [
+            'clinical trial', 'phase 1', 'phase 2', 'phase 3', 'phase i', 'phase ii', 'phase iii',
+            'efficacy', 'safety', 'nct', 'endpoint', 'adverse event',
+            'protocol', 'enrollment', 'recruiting'
+        ]
+
+        # General clinical terms
+        general_clinical_keywords = ['trial', 'patient', 'study', 'clinical']
+
+        # Literature-specific keywords
+        literature_keywords = [
+            'literature', 'literature review', 'publications', 'pubmed',
+            'research papers', 'scientific literature', 'biomedical literature',
+            'research articles', 'peer-reviewed', 'pmid', 'published studies',
+            'systematic review', 'meta-analysis'
+        ]
+
+        # Check for specific patterns first (higher priority)
+        has_literature = any(kw in query_lower for kw in literature_keywords)
+        has_patent_only = any(kw in query_lower for kw in patent_only_keywords)
+        has_patent_general = any(kw in query_lower for kw in general_patent_keywords)
+        has_patent = has_patent_only or has_patent_general or any(kw in query_lower for kw in patent_keywords)
+
+        has_market_specific = any(kw in query_lower for kw in market_keywords)
+        has_market_general = any(kw in query_lower for kw in general_market_keywords)
+        has_market = has_market_specific or has_market_general
+
+        has_clinical_specific = any(kw in query_lower for kw in clinical_keywords)
+        has_clinical_general = any(kw in query_lower for kw in general_clinical_keywords)
+        has_clinical = has_clinical_specific or has_clinical_general
+
+        # DECISION TREE (Deterministic)
+
+        # 3a. Literature-only queries
+        if has_literature and not has_patent and not has_market_specific and not has_clinical_specific:
+            logger.info("🎯 Query classified as: LITERATURE ONLY")
+            return ['literature']
+
+        # 3b. Patent-only queries (specific patent landscape keywords)
+        if has_patent_only and not has_market_specific and not has_clinical_specific and not has_literature:
+            logger.info("🎯 Query classified as: PATENT ONLY (patent landscape/specific)")
+            return ['patent']
+
+        # 3b. Explicit multi-agent with "and" connective
+        if has_explicit_and:
+            if has_literature and has_clinical and not has_market and not has_patent:
+                logger.info("🎯 Query classified as: LITERATURE + CLINICAL (explicit 'and')")
+                return ['literature', 'clinical']
+            elif has_literature and has_market and not has_clinical and not has_patent:
+                logger.info("🎯 Query classified as: LITERATURE + MARKET (explicit 'and')")
+                return ['literature', 'market']
+            elif has_market and has_clinical and not has_patent and not has_literature:
+                logger.info("🎯 Query classified as: MARKET + CLINICAL (explicit 'and')")
+                return ['market', 'clinical']
+            elif has_patent and has_market and has_clinical:
+                logger.info("🎯 Query classified as: ALL AGENTS (explicit multi-agent)")
+                return ['patent', 'market', 'clinical']
+
+        # 3c. Patent + other agents
+        if has_patent and (has_market or has_clinical):
+            logger.info("🎯 Query classified as: PATENT + MARKET + CLINICAL (patent with others)")
             return ['patent', 'market', 'clinical']
-        elif has_patent:
+
+        # 3d. Patent only (general patent terms without market/clinical)
+        if has_patent:
             logger.info("🎯 Query classified as: PATENT ONLY")
             return ['patent']
-        elif has_market and has_clinical:
+
+        # 3e. Market + Clinical
+        if has_market and has_clinical:
             logger.info("🎯 Query classified as: MARKET + CLINICAL")
             return ['market', 'clinical']
-        elif has_market and not has_clinical:
+
+        # 3f. Market only
+        if has_market and not has_clinical:
             logger.info("🎯 Query classified as: MARKET ONLY")
             return ['market']
-        elif has_clinical and not has_market:
+
+        # 3g. Clinical only
+        if has_clinical and not has_market:
             logger.info("🎯 Query classified as: CLINICAL ONLY")
             return ['clinical']
-        else:
-            # Default: Run both for comprehensive coverage
-            logger.info("🎯 Query classified as: BOTH (default)")
-            return ['market', 'clinical']
+
+        # 4. Default: Market + Clinical (conservative)
+        logger.info("🎯 Query classified as: MARKET + CLINICAL (default)")
+        return ['market', 'clinical']
 
     def process_query(self, query: str) -> Dict[str, Any]:
         """
@@ -260,91 +329,36 @@ class MasterAgent:
                     'result_count': 0
                 })
 
-        # Step 3: Fuse results into unified response
-        logger.info(f"🔀 Fusing results from {len(results)} agent(s)...")
-        print(f"🔀 Fusing results from {len(results)} agent(s)...")
-        fused_response = self._fuse_results(query, results, execution_status)
-
-        # Log final response stats
-        total_refs = len(fused_response.get('references', []))
-        total_insights = len(fused_response.get('insights', []))
-        logger.info(f"✅ Master Agent completed: {total_refs} total references, {total_insights} insights")
-        print(f"✅ Master Agent completed: {total_refs} total references, {total_insights} insights")
-        logger.info("="*60)
-
-        return fused_response
-        results = {}
-        execution_status = []  # Track execution status for frontend
-
-        if 'clinical' in active_agents:
-            logger.info("🏥 Delegating to Clinical Agent...")
-            print(f"   🏥 Calling Clinical Agent...")
+        if 'literature' in active_agents:
+            logger.info("📚 Delegating to Literature Agent...")
+            print(f"   📚 Calling Literature Agent...")
             start_time = datetime.now()
-            
+
             # Add RUNNING status BEFORE execution
             execution_status.append({
-                'agent_id': 'clinical',
+                'agent_id': 'literature',
                 'status': 'running',
                 'started_at': start_time.isoformat(),
                 'completed_at': None,
                 'result_count': 0
             })
-            
+
             try:
-                clinical_result = self._run_clinical_agent(query)
-                results['clinical'] = clinical_result
-                trial_count = clinical_result.get('total_trials', 0)
-                ref_count = len(clinical_result.get('references', []))
-                logger.info(f"✅ Clinical Agent returned: {trial_count} trials, {ref_count} references")
-                print(f"   ✅ Clinical Agent: {trial_count} trials, {ref_count} references")
+                literature_result = self._run_literature_agent(query)
+                results['literature'] = literature_result
+                pub_count = len(literature_result.get('publications', []))
+                logger.info(f"✅ Literature Agent returned: {pub_count} publications")
+                print(f"   ✅ Literature Agent: {pub_count} publications")
 
                 # Update to COMPLETED status
                 execution_status[-1].update({
                     'status': 'completed',
                     'completed_at': datetime.now().isoformat(),
-                    'result_count': trial_count
+                    'result_count': pub_count
                 })
             except Exception as e:
-                logger.error(f"❌ Clinical Agent FAILED: {e}", exc_info=True)
-                print(f"   ❌ Clinical Agent FAILED: {e}")
-                execution_status[-1].update({
-                    'status': 'failed',
-                    'completed_at': datetime.now().isoformat(),
-                    'result_count': 0
-                })
-
-        if 'market' in active_agents:
-            logger.info("📊 Delegating to Market Agent...")
-            print(f"   📊 Calling Market Agent...")
-            start_time = datetime.now()
-            
-            # Add RUNNING status BEFORE execution
-            execution_status.append({
-                'agent_id': 'market',
-                'status': 'running',
-                'started_at': start_time.isoformat(),
-                'completed_at': None,
-                'result_count': 0
-            })
-            
-            try:
-                market_result = self._run_market_agent(query)
-                results['market'] = market_result
-                web_count = len(market_result.get('web_results', []))
-                rag_count = len(market_result.get('rag_results', []))
-                source_count = web_count + rag_count
-                logger.info(f"✅ Market Agent returned: {web_count} web sources, {rag_count} RAG docs")
-                print(f"   ✅ Market Agent: {web_count} web sources, {rag_count} RAG docs")
-
-                # Update to COMPLETED status
-                execution_status[-1].update({
-                    'status': 'completed',
-                    'completed_at': datetime.now().isoformat(),
-                    'result_count': source_count
-                })
-            except Exception as e:
-                logger.error(f"❌ Market Agent FAILED: {e}", exc_info=True)
-                print(f"   ❌ Market Agent FAILED: {e}")
+                logger.error(f"❌ Literature Agent FAILED: {e}", exc_info=True)
+                print(f"   ❌ Literature Agent FAILED: {e}")
                 execution_status[-1].update({
                     'status': 'failed',
                     'completed_at': datetime.now().isoformat(),
@@ -498,6 +512,48 @@ class MasterAgent:
             'landscape': landscape,
             'fto_assessment': fto_assessment,
             'expiring_analysis': expiring_analysis
+        }
+
+    def _run_literature_agent(self, query: str) -> Dict[str, Any]:
+        """Run Literature Agent and return structured results"""
+        logger.info(f"📚 Literature Agent: Starting process for query: '{query}'")
+
+        # Get literature review data
+        literature_result = self.literature_agent.process(query)
+
+        # Extract publications
+        publications = literature_result.get('publications', [])
+
+        # Create references from publications
+        logger.info(f"📚 Processing {len(publications)} publication records...")
+        references = []
+        for i, pub in enumerate(publications[:20], 1):  # Top 20 publications
+            authors = ", ".join(pub.get('authors', [])[:3])
+            pmid = pub.get('pmid', 'N/A')
+            references.append({
+                "type": "literature",
+                "title": pub.get('title', 'No title available'),
+                "source": f"PubMed {pmid}",
+                "date": pub.get('year', 'N/A'),
+                "url": pub.get('url', f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/"),
+                "relevance": 90 - i,  # Decreasing relevance
+                "agentId": "literature",
+                "pmid": pmid,
+                "authors": authors,
+                "journal": pub.get('journal', 'Unknown journal'),
+                "summary": pub.get('abstract', 'No abstract available')[:300] + '...'
+                    if pub.get('abstract') else 'No abstract available'
+            })
+
+        logger.info(f"✅ Literature Agent completed: {len(references)} publication references created")
+
+        return {
+            'summary': literature_result.get('comprehensive_summary', literature_result.get('summary', '')),
+            'comprehensive_summary': literature_result.get('comprehensive_summary', ''),
+            'publications': publications,
+            'references': references,
+            'total_publications': len(publications),
+            'keywords': literature_result.get('keywords', '')
         }
 
     def _fuse_results(self, query: str, results: Dict[str, Any], execution_status: List[Dict[str, Any]]) -> Dict[str, Any]:

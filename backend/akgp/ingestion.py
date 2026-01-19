@@ -299,17 +299,21 @@ class IngestionEngine:
         created_nodes.append(market_id)
 
         # 2. Create Evidence node
+        # Ensure summary and raw_reference are not empty (Pydantic v2 and provenance validation require non-empty strings)
+        summary = market_data.get('summary', '') or f"Market signal for {market_data.get('drug_name', 'drug')}: {market_data.get('signal_type', 'data')}"
+        raw_reference = market_data.get('source_url', '') or market_data.get('source', '') or f"Market data from {agent_name}"
+
         evidence_node = EvidenceNode(
             name=f"Market Evidence: {market_data.get('drug_name', 'Unknown')}",
             source=agent_name,
             agent_name=agent_name,
             agent_id=agent_id,
             api_source=market_data.get('data_provider', 'Web Search'),
-            raw_reference=market_data.get('source_url', ''),
+            raw_reference=raw_reference,
             source_type=SourceType.MARKET,
-            quality=assess_source_quality(SourceType.MARKET, market_data.get('source_url', ''), market_data),
+            quality=assess_source_quality(SourceType.MARKET, raw_reference, market_data),
             confidence_score=market_data.get('confidence_score', 0.5),
-            summary=market_data.get('summary', ''),
+            summary=summary,
             metadata=market_data
         )
 

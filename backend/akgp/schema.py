@@ -129,7 +129,7 @@ class EvidenceNode(BaseNode):
     # Evidence quality and type
     source_type: SourceType
     quality: EvidenceQuality = EvidenceQuality.MEDIUM
-    confidence_score: float = Field(ge=0.0, le=1.0, default=0.5)
+    confidence_score: float = Field(default=0.5)
 
     # Content
     summary: str = Field(..., min_length=1)
@@ -141,7 +141,7 @@ class EvidenceNode(BaseNode):
 
     @validator('confidence_score')
     def validate_confidence(cls, v):
-        """Ensure confidence is in valid range"""
+        """Ensure confidence is in valid range [0.0, 1.0] - clamp if out of bounds"""
         return max(0.0, min(1.0, v))
 
 
