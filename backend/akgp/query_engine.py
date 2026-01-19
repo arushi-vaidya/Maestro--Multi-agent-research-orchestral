@@ -30,6 +30,29 @@ logger = logging.getLogger(__name__)
 
 
 # ==============================================================================
+# HELPER FUNCTIONS
+# ==============================================================================
+
+def _get_enum_value(value):
+    """
+    Helper to extract string value from enum or string (Pydantic v2 compatibility)
+
+    In Pydantic v2 with use_enum_values=True, enum fields are automatically
+    converted to their string values. This helper handles both enum objects
+    and pre-converted strings.
+
+    Args:
+        value: Enum object or string value
+
+    Returns:
+        String value
+    """
+    if isinstance(value, str):
+        return value
+    return value.value if hasattr(value, 'value') else str(value)
+
+
+# ==============================================================================
 # QUERY ENGINE
 # ==============================================================================
 
@@ -158,8 +181,8 @@ class QueryEngine:
             evidence_summary.append({
                 "evidence_id": evidence.id,
                 "summary": evidence.summary[:300],
-                "source_type": evidence.source_type.value,
-                "quality": evidence.quality.value,
+                "source_type": _get_enum_value(evidence.source_type),
+                "quality": _get_enum_value(evidence.quality),
                 "confidence": evidence.confidence_score,
                 "recency_weight": self.temporal.compute_recency_weight(evidence),
                 "combined_weight": weight,
@@ -296,7 +319,7 @@ class QueryEngine:
                     'high': 0.9,
                     'medium': 0.7,
                     'low': 0.5
-                }.get(evidence_node.quality.value, 0.7)
+                }.get(_get_enum_value(evidence_node.quality), 0.7)
 
                 recency_weight = self.temporal.compute_recency_weight(evidence_node)
                 combined_weight = self.temporal.compute_combined_weight(evidence_node)
@@ -305,8 +328,8 @@ class QueryEngine:
                 age_days = (datetime.utcnow() - evidence_node.extraction_timestamp).days
 
                 explanation_parts = [
-                    f"Source: {evidence_node.source_type.value.upper()} ({evidence_node.agent_name})",
-                    f"Quality: {evidence_node.quality.value.upper()} (weight: {quality_weight:.2f})",
+                    f"Source: {_get_enum_value(evidence_node.source_type).upper()} ({evidence_node.agent_name})",
+                    f"Quality: {_get_enum_value(evidence_node.quality).upper()} (weight: {quality_weight:.2f})",
                     f"Confidence: {evidence_node.confidence_score:.2f}",
                     f"Recency: {age_days} days old (weight: {recency_weight:.2f})",
                     f"Combined weight: {combined_weight:.3f}",
@@ -317,7 +340,7 @@ class QueryEngine:
                     **ev,
                     "full_summary": evidence_node.summary,
                     "explanation_breakdown": explanation_parts,
-                    "why_strong": f"This evidence ranks highly because: {evidence_node.quality.value} quality ({quality_weight:.2f}), {evidence_node.confidence_score:.0%} confidence, and relatively recent ({age_days} days old, recency weight: {recency_weight:.2f})."
+                    "why_strong": f"This evidence ranks highly because: {_get_enum_value(evidence_node.quality)} quality ({quality_weight:.2f}), {evidence_node.confidence_score:.0%} confidence, and relatively recent ({age_days} days old, recency weight: {recency_weight:.2f})."
                 })
 
         return {
@@ -366,7 +389,7 @@ class QueryEngine:
                 "summary": evidence.summary[:200],
                 "agent_name": evidence.agent_name,
                 "raw_reference": evidence.raw_reference,
-                "quality": evidence.quality.value,
+                "quality": _get_enum_value(evidence.quality),
                 "confidence": evidence.confidence_score,
                 "combined_weight": weight,
                 "extraction_date": evidence.extraction_timestamp.isoformat()
@@ -374,7 +397,7 @@ class QueryEngine:
 
         return {
             "success": True,
-            "source_type": source_type.value,
+            "source_type": _get_enum_value(source_type),
             "total_evidence": len(evidence_list),
             "returned": len(results),
             "evidence": results
@@ -399,7 +422,7 @@ class QueryEngine:
         # Count by source type
         by_source = {}
         for evidence in evidence_list:
-            st = evidence.source_type.value
+            st = _get_enum_value(evidence.source_type)
             by_source[st] = by_source.get(st, 0) + 1
 
         # Get strongest evidence
@@ -412,7 +435,7 @@ class QueryEngine:
 
         if strongest[0]:
             explanation_parts.append(
-                f"Strongest evidence: {strongest[0].source_type.value} from {strongest[0].agent_name} "
+                f"Strongest evidence: {strongest[0]_get_enum_value(evidence_node.source_type)} from {strongest[0].agent_name} "
                 f"(weight: {strongest[1]:.3f}, confidence: {strongest[0].confidence_score:.0%})."
             )
 

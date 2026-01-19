@@ -1,23 +1,54 @@
-"""Pytest configuration and fixtures."""
+"""
+Pytest Configuration and Global Fixtures
+Shared fixtures for all tests
+"""
 import pytest
-from unittest.mock import Mock
+import sys
+import os
+from pathlib import Path
 
-@pytest.fixture
-def mock_llm():
-    """Mock LLM for testing."""
-    return Mock()
+# Add backend directory to Python path for imports
+backend_dir = Path(__file__).parent.parent
+sys.path.insert(0, str(backend_dir))
 
-@pytest.fixture
-def sample_query():
-    """Sample pharmaceutical query."""
-    return "What's the market size for diabetes drugs in India?"
+# Import all fixtures from fixtures directory
+from tests.fixtures.agent_fixtures import *
 
-@pytest.fixture
-def mock_agent_response():
-    """Mock agent response."""
-    return {
-        "agent": "TestAgent",
-        "query": "test query",
-        "results": [],
-        "confidence": 0.95
-    }
+# Global test configuration
+pytest_plugins = []
+
+
+@pytest.fixture(scope="session", autouse=True)
+def setup_test_environment():
+    """Setup test environment before running tests"""
+    # Disable any real API calls
+    os.environ["TESTING"] = "true"
+
+    yield
+
+    # Cleanup after all tests
+    pass
+
+
+@pytest.fixture(autouse=True)
+def reset_mocks():
+    """Reset all mocks between tests"""
+    yield
+    # Cleanup happens automatically with pytest
+
+
+# Configure pytest markers
+def pytest_configure(config):
+    """Register custom markers"""
+    config.addinivalue_line(
+        "markers", "unit: mark test as a unit test"
+    )
+    config.addinivalue_line(
+        "markers", "integration: mark test as an integration test"
+    )
+    config.addinivalue_line(
+        "markers", "e2e: mark test as an end-to-end test"
+    )
+    config.addinivalue_line(
+        "markers", "slow: mark test as slow running"
+    )
