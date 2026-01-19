@@ -29,6 +29,7 @@ from graph_orchestration.nodes import (
     patent_agent_node,
     market_agent_node,
     literature_agent_node,
+    join_agents_node,
     akgp_ingestion_node,
     ros_node,
     finalize_response_node
@@ -62,22 +63,33 @@ def should_run_agent(state: GraphState, agent_id: str) -> bool:
 
 def create_workflow() -> StateGraph:
     """
-    Create LangGraph workflow for MAESTRO orchestration
+    Create LangGraph workflow for MAESTRO orchestration (STEP 7 Phase 2: Parallel)
 
     Returns:
         Compiled StateGraph ready for execution
 
-    Graph Structure:
+    Graph Structure (Phase 2 - Parallel):
         START
         → classify_query
-        → [conditional routing]
-        → agent_execution (parallel: clinical, patent, market, literature)
-        → akgp_ingestion
+        → [FAN-OUT: parallel execution of active agents]
+           ├─→ clinical_agent ──┐
+           ├─→ patent_agent ────┤
+           ├─→ market_agent ────┤
+           └─→ literature_agent ─┤
+        → [JOIN: wait for all agents] ←┘
+        → akgp_ingestion (single execution after join)
         → ros
         → finalize_response
         → END
+
+    Key Design:
+    - True parallel fan-out after classification
+    - All active agents run concurrently
+    - Deterministic join ensures stable merge order
+    - AKGP ingestion happens exactly once after join
+    - Output parity with sequential Phase 1 maintained
     """
-    logger.info("🎼 Creating LangGraph workflow for MAESTRO orchestration")
+    logger.info("🎼 Creating LangGraph workflow (Phase 2: Parallel Execution)")
 
     # Initialize StateGraph
     workflow = StateGraph(GraphState)
@@ -95,39 +107,42 @@ def create_workflow() -> StateGraph:
     workflow.add_node("market_agent", market_agent_node)
     workflow.add_node("literature_agent", literature_agent_node)
 
-    # Node 6: AKGP ingestion
+    # Node 6: Join node (synchronization barrier)
+    workflow.add_node("join_agents", join_agents_node)
+
+    # Node 7: AKGP ingestion (after join)
     workflow.add_node("akgp_ingestion", akgp_ingestion_node)
 
-    # Node 7: ROS computation
+    # Node 8: ROS computation
     workflow.add_node("ros", ros_node)
 
-    # Node 8: Finalize response
+    # Node 9: Finalize response
     workflow.add_node("finalize_response", finalize_response_node)
 
     # ==============================================================================
-    # DEFINE EDGES (Simple Sequential Flow for Phase 1)
+    # DEFINE EDGES (PHASE 2: Parallel Fan-Out with Join)
     # ==============================================================================
 
     # START → classify_query
     workflow.set_entry_point("classify_query")
 
-    # For simplicity in Phase 1, use sequential execution
-    # Future: Implement true parallel fan-out with join node
-
-    # classify_query → clinical_agent
+    # PARALLEL FAN-OUT: classify_query → all agent nodes (unconditional)
+    # Agents will check active_agents internally and skip if not needed
+    # LangGraph executes these in parallel automatically
     workflow.add_edge("classify_query", "clinical_agent")
+    workflow.add_edge("classify_query", "patent_agent")
+    workflow.add_edge("classify_query", "market_agent")
+    workflow.add_edge("classify_query", "literature_agent")
 
-    # clinical_agent → patent_agent
-    workflow.add_edge("clinical_agent", "patent_agent")
+    # PARALLEL JOIN: All agents → join_agents
+    # LangGraph waits for all parallel branches before continuing
+    workflow.add_edge("clinical_agent", "join_agents")
+    workflow.add_edge("patent_agent", "join_agents")
+    workflow.add_edge("market_agent", "join_agents")
+    workflow.add_edge("literature_agent", "join_agents")
 
-    # patent_agent → market_agent
-    workflow.add_edge("patent_agent", "market_agent")
-
-    # market_agent → literature_agent
-    workflow.add_edge("market_agent", "literature_agent")
-
-    # literature_agent → akgp_ingestion
-    workflow.add_edge("literature_agent", "akgp_ingestion")
+    # SEQUENTIAL AFTER JOIN: join_agents → akgp_ingestion
+    workflow.add_edge("join_agents", "akgp_ingestion")
 
     # akgp_ingestion → ros
     workflow.add_edge("akgp_ingestion", "ros")
@@ -144,7 +159,7 @@ def create_workflow() -> StateGraph:
 
     compiled_graph = workflow.compile()
 
-    logger.info("✅ LangGraph workflow compiled successfully")
+    logger.info("✅ LangGraph workflow compiled (Phase 2: Parallel)")
 
     return compiled_graph
 
