@@ -27,6 +27,9 @@ from normalization import (
 from akgp.graph_manager import GraphManager
 from akgp.ingestion import IngestionEngine
 
+# STEP 7: LangGraph Orchestration (toggle-able)
+USE_LANGGRAPH = os.getenv('USE_LANGGRAPH', 'false').lower() == 'true'
+
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -301,6 +304,10 @@ class MasterAgent:
         Process query with intelligent multi-agent routing.
 
         Flow: Classification → Agent Execution → Result Fusion
+
+        STEP 7: Toggle-able LangGraph orchestration
+        - If USE_LANGGRAPH=true: Use LangGraph parallel execution
+        - If USE_LANGGRAPH=false: Use legacy sequential execution
         """
         from datetime import datetime
 
@@ -308,6 +315,17 @@ class MasterAgent:
         logger.info(f"🎼 Master Agent processing query: {query[:100]}...")
         logger.info("="*60)
         print(f"\n🎼 Master Agent processing query: {query[:100]}...")
+
+        # STEP 7: LangGraph orchestration (if enabled)
+        if USE_LANGGRAPH:
+            logger.info("🎯 Using LangGraph orchestration (STEP 7)")
+            print("🎯 Using LangGraph orchestration (STEP 7)")
+            from graph_orchestration.workflow import execute_query
+            return execute_query(query)
+
+        # LEGACY: Sequential orchestration
+        logger.info("🎯 Using legacy sequential orchestration")
+        print("🎯 Using legacy sequential orchestration")
 
         # Step 1: Classify query to determine which agents to run
         active_agents = self._classify_query(query)
