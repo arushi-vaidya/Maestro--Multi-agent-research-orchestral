@@ -30,6 +30,7 @@ from akgp.graph_manager import GraphManager
 from akgp.provenance import ProvenanceTracker, assess_source_quality
 from akgp.temporal import TemporalReasoner
 from akgp.conflict_resolution import ConflictDetector
+from normalization.common import NormalizedEvidence, Polarity
 
 logger = logging.getLogger(__name__)
 
@@ -353,6 +354,152 @@ class IngestionEngine:
             "created_nodes": created_nodes,
             "created_relationships": created_relationships,
             "evidence_id": evidence_id
+        }
+
+    def ingest_evidence(
+        self,
+        normalized_evidence: NormalizedEvidence
+    ) -> Dict[str, Any]:
+        """
+        Ingest normalized evidence from normalization layer
+
+        THIS IS THE SINGLE INGESTION GATE - ALL agent outputs flow through here.
+
+        Args:
+            normalized_evidence: NormalizedEvidence from parser (parse_clinical_evidence, etc.)
+                Contains:
+                - evidence_node: Complete EvidenceNode with provenance
+                - drug_id: Canonical drug identifier
+                - disease_id: Canonical disease identifier
+                - polarity: SUPPORTS/CONTRADICTS/SUGGESTS
+
+        Returns:
+            Ingestion summary with created node IDs
+
+        Note:
+            The evidence_node is already complete with:
+            - Temporal validity set by normalization layer
+            - Quality determined by parser
+            - Confidence score calculated
+            - Provenance metadata (agent_id, agent_name, raw_reference)
+        """
+        evidence_node = normalized_evidence.evidence_node
+        drug_id = normalized_evidence.drug_id
+        disease_id = normalized_evidence.disease_id
+        polarity = normalized_evidence.polarity
+
+        logger.info(
+            f"Ingesting normalized evidence: {evidence_node.name} "
+            f"(drug={drug_id[:20]}..., disease={disease_id[:20]}..., polarity={polarity})"
+        )
+
+        created_nodes = []
+        created_relationships = []
+
+        # 1. Create Evidence node in graph
+        evidence_graph_id = self.graph.create_node(evidence_node)
+        created_nodes.append(evidence_graph_id)
+
+        # 2. Track provenance
+        self.provenance.record_provenance(evidence_node)
+
+        # 3. Extract drug/disease names from metadata
+        # Clinical parser uses "interventions" and "conditions"
+        # Other parsers may use "drug_mentions" and "disease_mentions"
+        drug_mentions = (
+            evidence_node.metadata.get("drug_mentions") or
+            evidence_node.metadata.get("interventions") or
+            evidence_node.metadata.get("drugs") or
+            []
+        )
+        disease_mentions = (
+            evidence_node.metadata.get("disease_mentions") or
+            evidence_node.metadata.get("conditions") or
+            evidence_node.metadata.get("indications") or
+            []
+        )
+
+        if not drug_mentions or not disease_mentions:
+            logger.warning(
+                f"Evidence {evidence_node.name} missing drug/disease mentions in metadata. "
+                f"Cannot create relationships."
+            )
+            return {
+                "success": True,
+                "evidence_id": evidence_graph_id,
+                "created_nodes": created_nodes,
+                "created_relationships": [],
+                "warning": "No drug/disease mentions found - evidence stored but not linked"
+            }
+
+        # Take primary drug and disease (first mention)
+        primary_drug = drug_mentions[0]
+        primary_disease = disease_mentions[0]
+
+        # 4. Create or find Drug node
+        drug_node, drug_graph_id = self._get_or_create_drug(
+            primary_drug,
+            source=evidence_node.source
+        )
+        created_nodes.append(drug_graph_id)
+
+        # Store canonical ID in drug node metadata for future reference
+        if drug_graph_id not in [n for n in created_nodes[1:]]:  # If newly created
+            if not hasattr(drug_node, 'metadata') or drug_node.metadata is None:
+                drug_node.metadata = {}
+            drug_node.metadata['canonical_id'] = drug_id
+
+        # 5. Create or find Disease node
+        disease_node, disease_graph_id = self._get_or_create_disease(
+            primary_disease,
+            source=evidence_node.source
+        )
+        created_nodes.append(disease_graph_id)
+
+        # Store canonical ID in disease node metadata for future reference
+        if disease_graph_id not in [n for n in created_nodes[1:-1]]:  # If newly created
+            if not hasattr(disease_node, 'metadata') or disease_node.metadata is None:
+                disease_node.metadata = {}
+            disease_node.metadata['canonical_id'] = disease_id
+
+        # 6. Map polarity to RelationshipType
+        # Note: CONTRADICTS polarity doesn't create drug-disease relationship
+        # (CONTRADICTS is for evidence-to-evidence relationships)
+        relationship_type_map = {
+            Polarity.SUPPORTS: RelationshipType.TREATS,  # Strong positive evidence
+            Polarity.CONTRADICTS: RelationshipType.INVESTIGATED_FOR,  # Negative trial results (still investigated)
+            Polarity.SUGGESTS: RelationshipType.SUGGESTS  # Weak/speculative evidence
+        }
+
+        relationship_type = relationship_type_map.get(polarity, RelationshipType.SUGGESTS)
+
+        # 7. Create Drug → Disease relationship
+        rel = Relationship(
+            relationship_type=relationship_type,
+            source_id=drug_graph_id,
+            target_id=disease_graph_id,
+            evidence_id=evidence_graph_id,
+            agent_id=evidence_node.agent_id,
+            confidence=evidence_node.confidence_score,
+            source_type=evidence_node.source_type
+        )
+        rel_id = self.graph.create_relationship(rel)
+        created_relationships.append(rel_id)
+
+        logger.info(
+            f"Successfully ingested evidence: {evidence_node.name} "
+            f"({relationship_type.value}: {primary_drug} → {primary_disease})"
+        )
+
+        return {
+            "success": True,
+            "evidence_id": evidence_graph_id,
+            "created_nodes": created_nodes,
+            "created_relationships": created_relationships,
+            "drug_id": drug_id,
+            "disease_id": disease_id,
+            "polarity": polarity,
+            "relationship_type": relationship_type.value
         }
 
     def ingest_batch(

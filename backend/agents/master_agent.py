@@ -16,6 +16,17 @@ from agents.patent_agent import PatentAgent
 from agents.market_agent_hybrid import MarketAgentHybrid
 from agents.literature_agent import LiteratureAgent
 
+# STEP 4: Evidence Normalization Layer + AKGP Integration
+from normalization import (
+    parse_clinical_evidence,
+    parse_patent_evidence,
+    parse_market_evidence,
+    parse_literature_evidence,
+    ParsingRejection
+)
+from akgp.graph_manager import GraphManager
+from akgp.ingestion import IngestionEngine
+
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -41,7 +52,96 @@ class MasterAgent:
             initialize_corpus=False  # Avoid corpus initialization at startup
         )
         self.literature_agent = LiteratureAgent()
+
+        # STEP 4: Initialize AKGP for evidence ingestion
+        self.graph_manager = GraphManager()
+        self.ingestion_engine = IngestionEngine(self.graph_manager)
+
         logger.info("Master Agent initialized with Clinical, Patent, Market, and Literature agents")
+        logger.info("STEP 4: AKGP IngestionEngine initialized for evidence normalization")
+
+    def _ingest_to_akgp(
+        self,
+        agent_output: Dict[str, Any],
+        agent_id: str,
+        parser_func: callable
+    ) -> Dict[str, Any]:
+        """
+        STEP 4: Ingest agent output through normalization layer into AKGP
+
+        This is the SINGLE INGESTION GATE for all agents.
+
+        Flow: Agent Output → Normalization Parser → AKGP.ingest_evidence()
+
+        Args:
+            agent_output: Raw agent output
+            agent_id: Agent identifier (clinical/patent/market/literature)
+            parser_func: Normalization parser function (parse_clinical_evidence, etc.)
+
+        Returns:
+            Ingestion summary with statistics
+
+        Error Handling:
+            - ParsingRejection: Expected - log but don't crash (malformed data)
+            - Other exceptions: Log error but don't crash (agent failures shouldn't cascade)
+        """
+        ingestion_summary = {
+            "agent_id": agent_id,
+            "total_evidence": 0,
+            "ingested_evidence": 0,
+            "rejected_evidence": 0,
+            "errors": []
+        }
+
+        try:
+            logger.info(f"🔗 STEP 4: Normalizing {agent_id} output for AKGP ingestion...")
+
+            # Parse agent output into normalized evidence
+            normalized_evidence_list = parser_func(agent_output)
+
+            ingestion_summary["total_evidence"] = len(normalized_evidence_list)
+
+            logger.info(
+                f"✅ Normalization complete: {len(normalized_evidence_list)} evidence items from {agent_id}"
+            )
+
+            # Ingest each normalized evidence into AKGP
+            for evidence in normalized_evidence_list:
+                try:
+                    ingest_result = self.ingestion_engine.ingest_evidence(evidence)
+
+                    if ingest_result.get("success"):
+                        ingestion_summary["ingested_evidence"] += 1
+                        logger.debug(
+                            f"   ✓ Ingested: {evidence.evidence_node.name} "
+                            f"({evidence.polarity}: {evidence.drug_id[:20]}... → {evidence.disease_id[:20]}...)"
+                        )
+                    else:
+                        ingestion_summary["rejected_evidence"] += 1
+                        logger.warning(f"   ✗ Ingestion failed: {ingest_result.get('warning', 'Unknown error')}")
+
+                except Exception as e:
+                    ingestion_summary["rejected_evidence"] += 1
+                    ingestion_summary["errors"].append(str(e))
+                    logger.error(f"   ✗ AKGP ingestion error: {e}", exc_info=False)
+
+            logger.info(
+                f"✅ AKGP ingestion complete for {agent_id}: "
+                f"{ingestion_summary['ingested_evidence']}/{ingestion_summary['total_evidence']} ingested, "
+                f"{ingestion_summary['rejected_evidence']} rejected"
+            )
+
+        except ParsingRejection as e:
+            # Expected - agent output doesn't meet normalization requirements
+            logger.warning(f"⚠️ Parsing rejection for {agent_id}: {e}")
+            ingestion_summary["errors"].append(f"ParsingRejection: {e}")
+
+        except Exception as e:
+            # Unexpected error - log but don't crash
+            logger.error(f"❌ Unexpected error during {agent_id} normalization: {e}", exc_info=True)
+            ingestion_summary["errors"].append(f"Unexpected error: {e}")
+
+        return ingestion_summary
 
     def _classify_query(self, query: str) -> List[str]:
         """
@@ -239,11 +339,20 @@ class MasterAgent:
                 logger.info(f"✅ Patent Agent returned: {patent_count} patents")
                 print(f"   ✅ Patent Agent: {patent_count} patents")
 
+                # STEP 4: Normalize + ingest into AKGP
+                ingestion_summary = self._ingest_to_akgp(
+                    agent_output=patent_result,
+                    agent_id='patent',
+                    parser_func=parse_patent_evidence
+                )
+                results['patent_akgp_ingestion'] = ingestion_summary
+
                 # Update to COMPLETED status
                 execution_status[-1].update({
                     'status': 'completed',
                     'completed_at': datetime.now().isoformat(),
-                    'result_count': patent_count
+                    'result_count': patent_count,
+                    'akgp_ingestion': ingestion_summary
                 })
             except Exception as e:
                 logger.error(f"❌ Patent Agent FAILED: {e}", exc_info=True)
@@ -276,11 +385,20 @@ class MasterAgent:
                 logger.info(f"✅ Clinical Agent returned: {trial_count} trials, {ref_count} references")
                 print(f"   ✅ Clinical Agent: {trial_count} trials, {ref_count} references")
 
+                # STEP 4: Normalize + ingest into AKGP
+                ingestion_summary = self._ingest_to_akgp(
+                    agent_output=clinical_result,
+                    agent_id='clinical',
+                    parser_func=parse_clinical_evidence
+                )
+                results['clinical_akgp_ingestion'] = ingestion_summary
+
                 # Update to COMPLETED status
                 execution_status[-1].update({
                     'status': 'completed',
                     'completed_at': datetime.now().isoformat(),
-                    'result_count': trial_count
+                    'result_count': trial_count,
+                    'akgp_ingestion': ingestion_summary
                 })
             except Exception as e:
                 logger.error(f"❌ Clinical Agent FAILED: {e}", exc_info=True)
@@ -314,11 +432,20 @@ class MasterAgent:
                 logger.info(f"✅ Market Agent returned: {web_count} web sources, {rag_count} RAG docs")
                 print(f"   ✅ Market Agent: {web_count} web sources, {rag_count} RAG docs")
 
+                # STEP 4: Normalize + ingest into AKGP
+                ingestion_summary = self._ingest_to_akgp(
+                    agent_output=market_result,
+                    agent_id='market',
+                    parser_func=parse_market_evidence
+                )
+                results['market_akgp_ingestion'] = ingestion_summary
+
                 # Update to COMPLETED status
                 execution_status[-1].update({
                     'status': 'completed',
                     'completed_at': datetime.now().isoformat(),
-                    'result_count': source_count
+                    'result_count': source_count,
+                    'akgp_ingestion': ingestion_summary
                 })
             except Exception as e:
                 logger.error(f"❌ Market Agent FAILED: {e}", exc_info=True)
@@ -350,11 +477,20 @@ class MasterAgent:
                 logger.info(f"✅ Literature Agent returned: {pub_count} publications")
                 print(f"   ✅ Literature Agent: {pub_count} publications")
 
+                # STEP 4: Normalize + ingest into AKGP
+                ingestion_summary = self._ingest_to_akgp(
+                    agent_output=literature_result,
+                    agent_id='literature',
+                    parser_func=parse_literature_evidence
+                )
+                results['literature_akgp_ingestion'] = ingestion_summary
+
                 # Update to COMPLETED status
                 execution_status[-1].update({
                     'status': 'completed',
                     'completed_at': datetime.now().isoformat(),
-                    'result_count': pub_count
+                    'result_count': pub_count,
+                    'akgp_ingestion': ingestion_summary
                 })
             except Exception as e:
                 logger.error(f"❌ Literature Agent FAILED: {e}", exc_info=True)
