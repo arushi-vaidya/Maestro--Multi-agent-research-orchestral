@@ -1,6 +1,7 @@
 """
 MAESTRO API Routes
 Feature 1: Basic query processing endpoint
+STEP 7.6: API Façade Layer
 """
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -9,6 +10,10 @@ import logging
 
 # Import our Master Agent
 from agents.master_agent import MasterAgent
+
+# STEP 7.6: Import API façade views
+from api.views.cache import get_cache
+from api.views import ros_view, graph_view, evidence_view, conflict_view, execution_view
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -92,26 +97,40 @@ class QueryResponse(BaseModel):
 def process_query(request: QueryRequest):
     """
     Main query processing endpoint
-    
+
     This endpoint:
     1. Receives a pharmaceutical query
     2. Routes it to the Master Agent
     3. Master Agent coordinates specialized agents
     4. Returns synthesized results
+    5. STEP 7.6: Caches results for API façade views
     """
     try:
         logger.info(f"Received query: {request.query[:100]}...")
-        
+
         # Get Master Agent
         agent = get_master_agent()
-        
+
         # Process query through Master Agent
         result = agent.process_query(request.query)
-        
+
         logger.info(f"Query processed successfully. Insights: {len(result.get('insights', []))}")
-        
+
+        # STEP 7.6: Cache results for API façade views
+        cache = get_cache()
+        cache.store_query_result(
+            query=request.query,
+            response=result,
+            ros_result=result.get('ros_results'),
+            akgp_result=None,  # Can be populated if needed
+            execution_metadata=result.get('execution_metadata'),
+            drug_id=None,  # Can be extracted from result if needed
+            disease_id=None  # Can be extracted from result if needed
+        )
+        logger.info("✅ Results cached for API façade views")
+
         return result
-        
+
     except Exception as e:
         logger.error(f"Error processing query: {str(e)}", exc_info=True)
         raise HTTPException(
@@ -147,6 +166,23 @@ async def api_root():
         "message": "MAESTRO API - Feature 1: Basic Query Processing",
         "endpoints": {
             "POST /api/query": "Process pharmaceutical intelligence query",
-            "GET /api/agents/status": "Get agent status information"
+            "GET /api/agents/status": "Get agent status information",
+            "GET /api/ros/latest": "Get ROS score for last query",
+            "GET /api/graph/summary": "Get knowledge graph visualization data",
+            "GET /api/evidence/timeline": "Get evidence timeline",
+            "GET /api/conflicts/explanation": "Get conflict explanation",
+            "GET /api/execution/status": "Get execution status"
         }
     }
+
+
+# ==============================================================================
+# STEP 7.6: INCLUDE API FAÇADE ROUTERS
+# ==============================================================================
+
+# Include all view routers
+router.include_router(ros_view.router)
+router.include_router(graph_view.router)
+router.include_router(evidence_view.router)
+router.include_router(conflict_view.router)
+router.include_router(execution_view.router)
