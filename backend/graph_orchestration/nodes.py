@@ -325,7 +325,65 @@ def literature_agent_node(state: GraphState) -> Dict[str, Any]:
 
 
 # ==============================================================================
-# NODE 6: AKGP INGESTION
+# NODE 6: JOIN NODE (PHASE 2 - PARALLEL EXECUTION)
+# ==============================================================================
+
+def join_agents_node(state: GraphState) -> Dict[str, Any]:
+    """
+    Join node for parallel agent execution (STEP 7 Phase 2)
+
+    Purpose:
+    - Wait for all active agents to complete (implicit in LangGraph)
+    - Validate all expected agents have outputs
+    - Produce deterministic merged state
+    - No actual merging needed (LangGraph already merged agent_outputs)
+
+    This node acts as a synchronization barrier ensuring:
+    1. All parallel agents have completed
+    2. agent_outputs dict is complete and stable
+    3. State is ready for AKGP ingestion
+
+    Input State:
+        - active_agents: List[str] (expected agents)
+        - agent_outputs: Dict[str, Dict] (merged from parallel execution)
+
+    Output State:
+        - execution_metadata: Dict with join completion timestamp
+
+    Note: LangGraph's parallel execution automatically merges agent_outputs
+    updates from all branches. This node validates completeness and adds
+    a synchronization point before AKGP ingestion.
+    """
+    logger.info("🔀 LangGraph Node: join_agents_node (Phase 2 Parallel Join)")
+
+    active_agents = state.get('active_agents', [])
+    agent_outputs = state.get('agent_outputs', {})
+
+    # Validate all active agents have outputs (even if empty/error)
+    expected_agents = set(active_agents)
+    actual_agents = set(agent_outputs.keys())
+
+    if expected_agents != actual_agents:
+        missing = expected_agents - actual_agents
+        extra = actual_agents - expected_agents
+        logger.warning(f"⚠️ Agent output mismatch - Missing: {missing}, Extra: {extra}")
+
+    # Sort agent_outputs keys for deterministic iteration order
+    # This ensures stable AKGP ingestion order
+    sorted_agent_ids = sorted(agent_outputs.keys())
+
+    logger.info(f"✅ Join complete: {len(agent_outputs)} agents → {sorted_agent_ids}")
+
+    # Add join metadata
+    execution_metadata = state.get('execution_metadata', {})
+    execution_metadata['join_timestamp'] = datetime.utcnow().isoformat()
+    execution_metadata['joined_agents'] = sorted_agent_ids
+
+    return {'execution_metadata': execution_metadata}
+
+
+# ==============================================================================
+# NODE 7: AKGP INGESTION
 # ==============================================================================
 
 def akgp_ingestion_node(state: GraphState) -> Dict[str, Any]:
@@ -349,8 +407,15 @@ def akgp_ingestion_node(state: GraphState) -> Dict[str, Any]:
 
     ingestion_summary = {}
 
-    # Ingest each agent's output
-    for agent_id, agent_output in agent_outputs.items():
+    # CRITICAL: Sort agent IDs for deterministic ingestion order
+    # This ensures same query → same AKGP state regardless of parallel execution order
+    sorted_agent_ids = sorted(agent_outputs.keys())
+
+    logger.info(f"📥 AKGP ingestion order: {sorted_agent_ids}")
+
+    # Ingest each agent's output in sorted order
+    for agent_id in sorted_agent_ids:
+        agent_output = agent_outputs[agent_id]
         if agent_output.get('error'):
             logger.warning(f"⚠️ Skipping AKGP ingestion for {agent_id} (agent failed)")
             continue
@@ -392,7 +457,7 @@ def akgp_ingestion_node(state: GraphState) -> Dict[str, Any]:
 
 
 # ==============================================================================
-# NODE 7: ROS COMPUTATION
+# NODE 8: ROS COMPUTATION
 # ==============================================================================
 
 def ros_node(state: GraphState) -> Dict[str, Any]:
@@ -419,7 +484,7 @@ def ros_node(state: GraphState) -> Dict[str, Any]:
 
 
 # ==============================================================================
-# NODE 8: FINALIZE RESPONSE
+# NODE 9: FINALIZE RESPONSE
 # ==============================================================================
 
 def finalize_response_node(state: GraphState) -> Dict[str, Any]:
@@ -508,6 +573,7 @@ __all__ = [
     'patent_agent_node',
     'market_agent_node',
     'literature_agent_node',
+    'join_agents_node',
     'akgp_ingestion_node',
     'ros_node',
     'finalize_response_node'
