@@ -1,0 +1,295 @@
+import React, { useState } from 'react';
+import NavigationHeader from '@/components/pharmagraph/NavigationHeader';
+import GraphVisualization from '@/components/pharmagraph/GraphVisualization';
+import GraphNode from '@/components/pharmagraph/GraphNode';
+import MethodologyBadge from '@/components/pharmagraph/MethodologyBadge';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Search, ZoomIn, ZoomOut, Maximize2, Download, ChevronRight, ExternalLink } from 'lucide-react';
+
+const graphNodes = [
+  { id: 'metformin', type: 'drug', label: 'Metformin' },
+  { id: 'ampk', type: 'target', label: 'AMPK' },
+  { id: 'mtor', type: 'pathway', label: 'mTOR' },
+  { id: 'gbm', type: 'disease', label: 'GBM' },
+  { id: 'cell_prolif', type: 'pathway', label: 'Cell Prolif.' },
+  { id: 'insulin', type: 'target', label: 'Insulin R.' },
+  { id: 'glucose', type: 'pathway', label: 'Glucose' },
+  { id: 'hypoglycemia', type: 'adverse', label: 'Hypoglycemia' },
+];
+
+const graphEdges = [
+  { source: 'metformin', target: 'ampk', label: 'activates', type: 'activates' },
+  { source: 'ampk', target: 'mtor', label: 'inhibits', type: 'inhibits' },
+  { source: 'mtor', target: 'gbm', label: 'promotes', type: 'promotes' },
+  { source: 'mtor', target: 'cell_prolif', label: 'regulates', type: 'regulates' },
+  { source: 'metformin', target: 'insulin', label: 'sensitizes', type: 'activates' },
+  { source: 'insulin', target: 'glucose', label: 'regulates', type: 'regulates' },
+  { source: 'metformin', target: 'hypoglycemia', label: 'risk', type: 'risk' },
+];
+
+const reasoningPaths = [
+  {
+    id: 'path_1',
+    name: 'Primary Mechanism',
+    nodes: ['metformin', 'ampk', 'mtor', 'gbm'],
+    confidence: 72,
+    sources: 34
+  },
+  {
+    id: 'path_2',
+    name: 'Cell Proliferation',
+    nodes: ['metformin', 'ampk', 'mtor', 'cell_prolif'],
+    confidence: 68,
+    sources: 28
+  },
+  {
+    id: 'path_3',
+    name: 'Metabolic Effect',
+    nodes: ['metformin', 'insulin', 'glucose'],
+    confidence: 85,
+    sources: 156
+  }
+];
+
+export default function KnowledgeGraph() {
+  const [selectedNode, setSelectedNode] = useState(null);
+  const [selectedPath, setSelectedPath] = useState(reasoningPaths[0]);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  const handleNodeClick = (node) => {
+    setSelectedNode(node);
+  };
+
+  return (
+    <div className="min-h-screen bg-[#FAFAFA]">
+      <NavigationHeader currentPage="KnowledgeGraph" />
+      
+      <div className="max-w-7xl mx-auto px-6 py-8">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-2xl font-semibold text-slate-900 mb-2">
+              Knowledge Graph Explorer
+            </h1>
+            <p className="text-slate-600">
+              Navigate mechanistic reasoning paths through the biomedical knowledge graph
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" className="border-slate-200">
+              <Download className="w-4 h-4 mr-2" />
+              Export
+            </Button>
+          </div>
+        </div>
+
+        <div className="grid lg:grid-cols-12 gap-6">
+          {/* Left Panel - Paths */}
+          <div className="lg:col-span-3 space-y-4">
+            <div className="bg-white border border-slate-200 rounded-lg p-4">
+              <h3 className="text-sm font-medium text-slate-500 uppercase tracking-wider mb-4">
+                Reasoning Paths
+              </h3>
+              <div className="space-y-2">
+                {reasoningPaths.map((path) => (
+                  <button
+                    key={path.id}
+                    onClick={() => setSelectedPath(path)}
+                    className={`w-full text-left p-3 rounded-lg border transition-all ${
+                      selectedPath?.id === path.id
+                        ? 'border-slate-400 bg-slate-50'
+                        : 'border-slate-200 hover:border-slate-300'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="font-medium text-slate-900 text-sm">
+                        {path.name}
+                      </span>
+                      <span className={`text-xs font-medium px-1.5 py-0.5 rounded ${
+                        path.confidence >= 70 
+                          ? 'bg-teal-100 text-teal-700'
+                          : 'bg-slate-100 text-slate-600'
+                      }`}>
+                        {path.confidence}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1 text-xs text-slate-500">
+                      {path.nodes.map((node, i) => (
+                        <React.Fragment key={node}>
+                          <span className="capitalize">{node.replace('_', ' ')}</span>
+                          {i < path.nodes.length - 1 && (
+                            <ChevronRight className="w-3 h-3" />
+                          )}
+                        </React.Fragment>
+                      ))}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Node Details */}
+            {selectedNode && (
+              <div className="bg-white border border-slate-200 rounded-lg p-4">
+                <h3 className="text-sm font-medium text-slate-500 uppercase tracking-wider mb-4">
+                  Node Details
+                </h3>
+                <div className="space-y-4">
+                  <GraphNode 
+                    node={selectedNode} 
+                    isSelected={true}
+                    isHighlighted={true}
+                    onClick={() => {}}
+                  />
+                  <div className="space-y-3 text-sm">
+                    <div>
+                      <span className="text-slate-500">External IDs</span>
+                      <p className="font-mono text-slate-700 mt-1">
+                        {selectedNode.id === 'metformin' && 'DrugBank:DB00331, ChEMBL:CHEMBL1431'}
+                        {selectedNode.id === 'ampk' && 'UniProt:Q13131, HGNC:6799'}
+                        {selectedNode.id === 'mtor' && 'Reactome:R-HSA-165159'}
+                        {selectedNode.id === 'gbm' && 'DOID:3068, ICD10:C71.9'}
+                      </p>
+                    </div>
+                    <div>
+                      <span className="text-slate-500">Connections</span>
+                      <p className="text-slate-700 mt-1">
+                        {graphEdges.filter(e => e.source === selectedNode.id || e.target === selectedNode.id).length} edges
+                      </p>
+                    </div>
+                  </div>
+                  <Button variant="outline" size="sm" className="w-full border-slate-200">
+                    <ExternalLink className="w-3 h-3 mr-2" />
+                    View in Database
+                  </Button>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Center - Graph */}
+          <div className="lg:col-span-6">
+            <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+              {/* Toolbar */}
+              <div className="flex items-center justify-between p-3 border-b border-slate-200">
+                <div className="relative flex-1 max-w-xs">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <Input
+                    type="text"
+                    placeholder="Search nodes..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="pl-9 h-8 text-sm border-slate-200"
+                  />
+                </div>
+                <div className="flex items-center gap-1">
+                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                    <ZoomOut className="w-4 h-4" />
+                  </Button>
+                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                    <ZoomIn className="w-4 h-4" />
+                  </Button>
+                  <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                    <Maximize2 className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+
+              {/* Graph */}
+              <GraphVisualization
+                nodes={graphNodes}
+                edges={graphEdges}
+                selectedNode={selectedNode}
+                highlightedPath={selectedPath?.nodes}
+              />
+            </div>
+          </div>
+
+          {/* Right Panel - Path Details */}
+          <div className="lg:col-span-3">
+            <div className="bg-white border border-slate-200 rounded-lg p-4 sticky top-24">
+              <h3 className="text-sm font-medium text-slate-500 uppercase tracking-wider mb-4">
+                Path Evidence
+              </h3>
+              
+              {selectedPath && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="font-medium text-slate-900">
+                      {selectedPath.name}
+                    </span>
+                    <span className="text-sm text-slate-500">
+                      {selectedPath.sources} sources
+                    </span>
+                  </div>
+
+                  {/* Path steps */}
+                  <div className="space-y-2">
+                    {selectedPath.nodes.map((nodeId, i) => {
+                      const node = graphNodes.find(n => n.id === nodeId);
+                      const edge = i < selectedPath.nodes.length - 1 
+                        ? graphEdges.find(e => 
+                            e.source === nodeId && e.target === selectedPath.nodes[i + 1]
+                          )
+                        : null;
+                      
+                      return (
+                        <div key={nodeId}>
+                          <button
+                            onClick={() => setSelectedNode(node)}
+                            className={`w-full text-left px-3 py-2 rounded border transition-all ${
+                              selectedNode?.id === nodeId
+                                ? 'border-slate-400 bg-slate-50'
+                                : 'border-slate-200 hover:border-slate-300'
+                            }`}
+                          >
+                            <span className="text-sm font-medium text-slate-900">
+                              {node?.label}
+                            </span>
+                          </button>
+                          {edge && (
+                            <div className="flex items-center justify-center py-1">
+                              <span className="text-xs text-slate-400 uppercase tracking-wider">
+                                {edge.label}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Supporting evidence */}
+                  <div className="pt-4 border-t border-slate-100">
+                    <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">
+                      Key Evidence
+                    </span>
+                    <div className="mt-3 space-y-2">
+                      {[
+                        { id: 'PMID:16731850', type: 'in_vitro' },
+                        { id: 'Reactome:R-HSA-380972', type: 'database' },
+                        { id: 'NCT02149459', type: 'clinical_trial' },
+                      ].map((source) => (
+                        <div 
+                          key={source.id}
+                          className="flex items-center justify-between text-sm"
+                        >
+                          <span className="font-mono text-slate-600">
+                            {source.id}
+                          </span>
+                          <MethodologyBadge type={source.type} />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
