@@ -1,4 +1,5 @@
 import React from 'react';
+import { cn } from '../../lib/utils';
 
 interface CalmCardProps {
   children: React.ReactNode;
@@ -16,16 +17,8 @@ export const CalmCard: React.FC<CalmCardProps> = ({
   className = '',
   noPadding = false,
 }) => {
-  return (
-    <div
-      className={`
-        bg-warm-surface rounded-lg
-        border border-warm-divider
-        ${noPadding ? '' : 'p-6'}
-        ${className}
-      `}
-    >
-      {children}
-    </div>
-  );
+  const base = 'bg-warm-surface rounded-lg border border-warm-divider';
+  const padding = noPadding ? '' : 'p-6';
+
+  return <div className={cn(base, padding, className)}>{children}</div>;
 };

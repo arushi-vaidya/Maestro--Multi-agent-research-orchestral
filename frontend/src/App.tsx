@@ -3,7 +3,6 @@ import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-route
 // Legacy pages (preserved for backwards compatibility)
 import LandingPage from './pages/LandingPage';
 import ResearchPage from './pages/ResearchPage';
-import CursorGlow from './components/CursorGlow';
 import Navbar from './components/Navbar';
 // STEP 8: New calm pages
 import {
@@ -25,7 +24,6 @@ const AppContent: React.FC = () => {
 
   return (
     <>
-      <CursorGlow />
       {!isLegacyRoute && <Navbar />}
       <Routes>
         {/* STEP 8: New calm pages (warm minimalist design) */}
