@@ -27,6 +27,9 @@ from normalization import (
 from akgp.graph_manager import GraphManager
 from akgp.ingestion import IngestionEngine
 
+# Import LLM config for summary generation
+from config.llm.llm_config_sync import generate_llm_response
+
 # STEP 7: LangGraph Orchestration (toggle-able)
 USE_LANGGRAPH = os.getenv('USE_LANGGRAPH', 'false').lower() == 'true'
 
@@ -558,11 +561,15 @@ class MasterAgent:
                 'total_trials': 0
             }
 
-        logger.info(f"📄 Fetching detailed summaries for {trial_count} trials...")
-        print(f"   📄 Fetching detailed summaries for {trial_count} trials...")
+        # Limit detailed fetching to top 25 trials to prevent timeout
+        MAX_DETAILED_TRIALS = 25
+        trials_to_fetch = min(trial_count, MAX_DETAILED_TRIALS)
+        
+        logger.info(f"📄 Fetching detailed summaries for {trials_to_fetch}/{trial_count} trials (limited to {MAX_DETAILED_TRIALS} for performance)...")
+        print(f"   📄 Fetching detailed summaries for {trials_to_fetch}/{trial_count} trials...")
 
         references = []
-        for i, trial in enumerate(clinical_result.get('trials', []), 1):
+        for i, trial in enumerate(clinical_result.get('trials', [])[:MAX_DETAILED_TRIALS], 1):
             try:
                 if i <= 5:  # Log first 5 for debugging
                     logger.info(f"   Fetching trial {i}/{trial_count}: {trial['nct_id']}")
@@ -857,6 +864,96 @@ class MasterAgent:
         logger.info(f"🔀 Fusion complete: {len(references)} references, {len(insights)} insights")
 
         return response
+
+    def _generate_agent_output_summaries(
+        self,
+        clinical_data: Dict[str, Any],
+        market_data: Dict[str, Any],
+        patent_data: Dict[str, Any],
+        literature_data: Dict[str, Any]
+    ) -> Dict[str, str]:
+        """
+        Generate concise LLM summaries for each agent's findings.
+        Takes raw agent output (references, data) and produces a 2-3 sentence summary.
+        """
+        summaries = {}
+        logger.info(f"📝 Generating LLM summaries... Clinical: {bool(clinical_data)}, Market: {bool(market_data)}, Patent: {bool(patent_data)}, Literature: {bool(literature_data)}")
+        
+        # Clinical Agent Summary
+        if clinical_data and clinical_data.get('references'):
+            logger.info(f"   Generating clinical summary from {len(clinical_data.get('references', []))} references...")
+            clinical_refs = clinical_data.get('references', [])[:10]
+            refs_text = "\n".join([f"- {r.get('title', 'Trial')}: {r.get('summary', '')[:100]}" for r in clinical_refs])
+            prompt = f"""Summarize the following clinical trial findings in 2-3 sentences. Focus on key outcomes and patient populations.
+
+Trials analyzed ({len(clinical_refs)}):
+{refs_text}
+
+Provide a concise summary:"""
+            try:
+                summary = generate_llm_response(prompt, temperature=0.3, max_tokens=150)
+                summaries['clinical'] = summary.strip()
+                logger.info(f"   ✅ Clinical summary generated: {len(summary)} chars")
+            except Exception as e:
+                logger.warning(f"   ❌ Failed to generate clinical summary: {e}")
+                summaries['clinical'] = f"Analyzed {clinical_data.get('total_trials', 0)} clinical trials with mixed results."
+        else:
+            logger.info("   ⏭️ Clinical summary skipped (no data)")
+        
+        # Market Agent Summary
+        if market_data and market_data.get('web_results'):
+            logger.info(f"   Generating market summary from {len(market_data.get('web_results', []))} sources...")
+            market_refs = market_data.get('web_results', [])[:10]
+            refs_text = "\n".join([f"- {r.get('title', 'Source')}: {r.get('snippet', '')[:100]}" for r in market_refs])
+            prompt = f"""Summarize the following market intelligence findings in 2-3 sentences. Focus on market size, trends, and competitive landscape.
+
+Sources analyzed ({len(market_refs)}):
+{refs_text}
+
+Provide a concise summary:"""
+            try:
+                summary = generate_llm_response(prompt, temperature=0.3, max_tokens=150)
+                summaries['market'] = summary.strip()
+            except Exception as e:
+                logger.warning(f"Failed to generate market summary: {e}")
+                summaries['market'] = f"Analyzed {len(market_refs)} market sources across web and internal databases."
+        
+        # Patent Agent Summary
+        if patent_data and patent_data.get('references'):
+            logger.info(f"   Generating patent summary from {len(patent_data.get('references', []))} patents...")
+            patent_refs = patent_data.get('references', [])[:10]
+            refs_text = "\n".join([f"- {r.get('title', 'Patent')}: {r.get('summary', '')[:100]}" for r in patent_refs])
+            prompt = f"""Summarize the following patent landscape findings in 2-3 sentences. Focus on key innovations and filing trends.
+
+Patents analyzed ({len(patent_refs)}):
+{refs_text}
+
+Provide a concise summary:"""
+            try:
+                summary = generate_llm_response(prompt, temperature=0.3, max_tokens=150)
+                summaries['patent'] = summary.strip()
+            except Exception as e:
+                logger.warning(f"Failed to generate patent summary: {e}")
+                summaries['patent'] = f"Analyzed {patent_data.get('total_patents', 0)} patents covering various therapeutic approaches."
+        
+        # Literature Agent Summary
+        if literature_data and literature_data.get('references'):
+            lit_refs = literature_data.get('references', [])[:10]
+            refs_text = "\n".join([f"- {r.get('title', 'Publication')}: {r.get('summary', '')[:100]}" for r in lit_refs])
+            prompt = f"""Summarize the following scientific literature findings in 2-3 sentences. Focus on mechanisms of action and key findings.
+
+Publications analyzed ({len(lit_refs)}):
+{refs_text}
+
+Provide a concise summary:"""
+            try:
+                summary = generate_llm_response(prompt, temperature=0.3, max_tokens=150)
+                summaries['literature'] = summary.strip()
+            except Exception as e:
+                logger.warning(f"Failed to generate literature summary: {e}")
+                summaries['literature'] = f"Analyzed {literature_data.get('total_publications', 0)} publications exploring therapeutic mechanisms."
+        
+        return summaries
 
     def _synthesize_overview_summary(
         self, 
