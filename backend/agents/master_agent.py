@@ -724,10 +724,12 @@ class MasterAgent:
         """
         clinical_data = results.get('clinical', {})
         market_data = results.get('market', {})
+        patent_data = results.get('patent', {})
+        literature_data = results.get('literature', {})
         execution_status = execution_status or []
 
         # 1. BUILD OVERVIEW SUMMARY (Intelligent Synthesis)
-        summary = self._synthesize_overview_summary(query, clinical_data, market_data)
+        summary = self._synthesize_overview_summary(query, clinical_data, market_data, patent_data, literature_data)
 
         # 2. BUILD INSIGHTS ARRAY
         insights = []
@@ -752,55 +754,58 @@ class MasterAgent:
                 }
             })
 
+        if patent_data:
+            insights.append({
+                "agent": "Patent Intelligence Agent",
+                "finding": patent_data.get('comprehensive_summary', patent_data.get('summary', '')),
+                "confidence": 90,
+                "total_patents": patent_data.get('total_patents', 0)
+            })
+
+        if literature_data:
+            insights.append({
+                "agent": "Literature Agent",
+                "finding": literature_data.get('comprehensive_summary', literature_data.get('summary', '')),
+                "confidence": 85,
+                "total_publications": literature_data.get('total_publications', 0)
+            })
+
         # 3. BUILD RECOMMENDATION
-        if clinical_data and market_data:
-            web_count = len(market_data.get('web_results', []))
-            rag_count = len(market_data.get('rag_results', []))
-            market_total = web_count + rag_count
-            recommendation = (
-                f"Review {len(clinical_data['references'])} clinical trials and "
-                f"{market_total} market intelligence sources ({web_count} web + {rag_count} internal)."
-            )
-        elif clinical_data:
-            recommendation = f"Review the {len(clinical_data['references'])} detailed trial summaries below."
-        elif market_data:
-            web_count = len(market_data.get('web_results', []))
-            rag_count = len(market_data.get('rag_results', []))
-            market_total = web_count + rag_count
-            recommendation = (
-                f"Review {market_total} market intelligence sources ({web_count} web + {rag_count} internal). "
-                f"Confidence: {market_data['confidence']['level']} ({market_data['confidence']['score']:.0%})."
-            )
-        else:
-            recommendation = "No recommendations available"
+        # Simplified recommendation logic for brevity
+        recommendation = "Review the comprehensive Executive Summary and detailed agent reports below."
 
         # 4. MERGE REFERENCES WITH STRICT SCHEMA ENFORCEMENT
         references = []
 
-        # Add clinical references with defensive agentId check
+        # Add clinical references
         if clinical_data:
             clinical_refs = clinical_data.get('references', [])
             for ref in clinical_refs:
-                # CRITICAL: Ensure every reference has agentId set
-                if 'agentId' not in ref or ref['agentId'] != 'clinical':
-                    logger.warning(f"Clinical reference missing or incorrect agentId: {ref.get('title', 'unknown')}")
-                    ref['agentId'] = 'clinical'
+                if 'agentId' not in ref: ref['agentId'] = 'clinical'
                 references.append(ref)
-            logger.info(f"Added {len(clinical_refs)} clinical references")
 
-        # Add market references (convert web results AND RAG results to reference format)
+        # Add patent references
+        if patent_data:
+            patent_refs = patent_data.get('references', [])
+            for ref in patent_refs:
+                if 'agentId' not in ref: ref['agentId'] = 'patent'
+                references.append(ref)
+
+        # Add literature references
+        if literature_data:
+            lit_refs = literature_data.get('references', [])
+            for ref in lit_refs:
+                if 'agentId' not in ref: ref['agentId'] = 'literature'
+                references.append(ref)
+
+        # Add market references
         if market_data:
             market_refs = []
-
-            # Add web search results as references with domain tier quality indicator
             for web_result in market_data.get('web_results', []):
                 url = web_result.get('url', '')
                 domain_tier = web_result.get('domain_tier', 2)
-
-                # Determine relevance score based on tier
                 relevance_map = {1: 95, 2: 85, 3: 70}
                 relevance = relevance_map.get(domain_tier, 85)
-
                 market_refs.append({
                     "type": "market-report",
                     "title": web_result.get('title', 'Market Intelligence Source'),
@@ -812,8 +817,6 @@ class MasterAgent:
                     "summary": web_result.get('snippet', ''),
                     "domain_tier": domain_tier
                 })
-
-            # CRITICAL: Also add RAG results as references (internal knowledge base)
             for rag_result in market_data.get('rag_results', []):
                 market_refs.append({
                     "type": "market-report",
@@ -825,36 +828,29 @@ class MasterAgent:
                     "agentId": "market",
                     "summary": rag_result.get('content', '')[:500]
                 })
-
             references.extend(market_refs)
-            web_count = len(market_data.get('web_results', []))
-            rag_count = len(market_data.get('rag_results', []))
-            logger.info(f"Added {web_count} web + {rag_count} RAG = {len(market_refs)} total market references")
-            print(f"      → Market references: {web_count} web + {rag_count} RAG = {len(market_refs)} total")
 
         # 5. CALCULATE AGGREGATE CONFIDENCE
-        if clinical_data and market_data:
-            aggregate_confidence = (95 + market_data['confidence']['score'] * 100) / 2
-        elif market_data:
-            aggregate_confidence = market_data['confidence']['score'] * 100
-        else:
-            aggregate_confidence = 95
+        scores = []
+        if clinical_data: scores.append(95)
+        if patent_data: scores.append(90)
+        if literature_data: scores.append(85)
+        if market_data: scores.append(market_data['confidence']['score'] * 100)
+        
+        aggregate_confidence = sum(scores) / len(scores) if scores else 0
 
         # 6. BUILD UNIFIED RESPONSE
         response = {
-            # Backward-compatible fields (existing API contract)
             "summary": summary,
             "insights": insights,
             "recommendation": recommendation,
             "timelineSaved": "6-8 hours",
             "references": references,
-
-            # New additive fields (non-breaking)
             "confidence_score": aggregate_confidence,
             "active_agents": list(results.keys()),
-            "agent_execution_status": execution_status,  # Detailed execution tracking for UI
+            "agent_execution_status": execution_status,
             "market_intelligence": market_data if market_data else None,
-            "patent_intelligence": results.get('patent', {}) if 'patent' in results else None,
+            "patent_intelligence": patent_data if patent_data else None,
             "total_trials": clinical_data.get('total_trials', 0) if clinical_data else 0
         }
 
@@ -862,160 +858,167 @@ class MasterAgent:
 
         return response
 
-    def _synthesize_overview_summary(self, query: str, clinical_data: Dict[str, Any], market_data: Dict[str, Any]) -> str:
+    def _synthesize_overview_summary(
+        self, 
+        query: str, 
+        clinical_data: Dict[str, Any], 
+        market_data: Dict[str, Any],
+        patent_data: Dict[str, Any],
+        literature_data: Dict[str, Any]
+    ) -> str:
         """
-        Generate intelligent overview summary by synthesizing insights from all agents.
-
-        This is executed AFTER all agents complete, ensuring comprehensive synthesis.
-        Uses LLM to create a coherent, evidence-backed summary.
-        
-        FIXED: Now correctly prioritizes multi-agent synthesis over single-agent summaries
-        FIXED: Added retry logic for rate limit errors (429) and Groq fallback
+        Generate detailed Executive Summary using LLM (Gemini/Groq).
         """
-        # Check what data we have
-        has_clinical = bool(clinical_data and clinical_data.get('total_trials', 0) > 0)
-        has_market = bool(market_data and market_data.get('sections', {}).get('summary'))
+        # Helper to format references
+        def format_refs(refs):
+            return "\n".join([f"- {r.get('title', 'Ref')} ({r.get('url', '#')})" for r in refs[:10]])
+
+        # Prepare context data
+        context = {
+            "query": query,
+            "clinical": {
+                "summary": clinical_data.get('comprehensive_summary', 'No data'),
+                "count": clinical_data.get('total_trials', 0),
+                "refs": format_refs(clinical_data.get('references', []))
+            },
+            "market": {
+                "summary": market_data.get('sections', {}).get('summary', 'No data') if market_data else 'No data',
+                "confidence": market_data.get('confidence', {}).get('level', 'N/A') if market_data else 'N/A',
+                "web_count": len(market_data.get('web_results', [])) if market_data else 0,
+                "refs": format_refs([
+                    {'title': r.get('title'), 'url': r.get('url')} 
+                    for r in market_data.get('web_results', [])
+                ] if market_data else [])
+            },
+            "patent": {
+                "summary": patent_data.get('comprehensive_summary', 'No data'),
+                "count": patent_data.get('total_patents', 0),
+                "refs": format_refs(patent_data.get('references', []))
+            },
+            "literature": {
+                "summary": literature_data.get('comprehensive_summary', 'No data'),
+                "count": literature_data.get('total_publications', 0),
+                "refs": format_refs(literature_data.get('references', []))
+            }
+        }
+
+        # Construct prompt
+        synthesis_prompt = f"""You are the Chief Research Officer of a pharmaceutical intelligence firm.
+Write a comprehensive, scientific, and detailed **Multi-Agent Analysis Report** for the query: "{query}"
+
+INPUT DATA:
+
+1. CLINICAL TRIALS AGENT:
+   - Trials Found: {context['clinical']['count']}
+   - Summary: {context['clinical']['summary'][:4000]}
+   - Key References:
+{context['clinical']['refs']}
+
+2. PATENT INTELLIGENCE AGENT:
+   - Patents Found: {context['patent']['count']}
+   - Summary: {context['patent']['summary'][:4000]}
+   - Key References:
+{context['patent']['refs']}
+
+3. MARKET INTELLIGENCE AGENT:
+   - Sources: {context['market']['web_count']}
+   - Confidence: {context['market']['confidence']}
+   - Summary: {context['market']['summary'][:4000]}
+   - Key References:
+{context['market']['refs']}
+
+4. LITERATURE AGENT:
+   - Publications: {context['literature']['count']}
+   - Summary: {context['literature']['summary'][:4000]}
+   - Key References:
+{context['literature']['refs']}
+
+MANDATORY REPORT STRUCTURE (Use Markdown):
+
+### 1. Executive Overview
+- High-level goal and hypothesis evaluation.
+- Clinical and commercial significance.
+- Summary of evidence volume.
+
+### 2. Multi-Agent Analysis Framework
+- Briefly describe MAESTRO's parallel execution (Clinical, Patent, Market, Literature).
+- Mention AKGP normalization and conflict reasoning.
+
+### 3. Clinical Evidence Agent Summary
+- Detailed findings from clinical trials.
+- Trial phases, outcomes, and trends.
+- **MUST include clickable hyperlinks** to key trials using the provided references (e.g., [Title](url)).
+
+### 4. Patent Intelligence Agent Summary
+- Patent landscape, assignees, and FTO implications.
+- **MUST include clickable hyperlinks** to patents.
+
+### 5. Market Intelligence Agent Summary
+- Market size, growth, and forecast analysis.
+- **MUST include clickable hyperlinks** to sources.
+
+### 6. Literature / Mechanistic Evidence Agent Summary
+- Mechanistic pathways and biological plausibility.
+- **MUST include clickable hyperlinks** to PubMed/journals.
+
+### 7. Evidence Conflict & Reconciliation Analysis
+- Discuss contradictions (e.g., clinical vs. literature).
+- How conflicts affect confidence.
+
+### 8. Confidence Score & ROS Interpretation
+- Explain the Research Opportunity Score (ROS) and confidence level based on the evidence.
+
+### 9. Consolidated Reference Index
+- List ALL references again, grouped by agent.
+- **Format:** - [Source Name/Title](URL)
+
+STYLE RULES:
+- **Tone:** Scientific, professional, executive-ready. NO marketing fluff.
+- **Length:** Long-form (800+ words). Detail is critical.
+- **References:** ABSOLUTELY MANDATORY. Use the provided URLs. Do not hallucinate links.
+- **Formatting:** Clean Markdown with headers and bullet points.
+"""
+
+        # Call LLM (Gemini with fallback)
+        import time
+        import requests
         
-        logger.info(f"Overview synthesis: clinical={has_clinical}, market={has_market}")
-        
-        # If BOTH agents ran successfully, synthesize intelligently
-        if has_clinical and has_market:
-            logger.info("🔀 Both agents completed - generating multi-agent synthesis")
-            
-            clinical_summary = clinical_data.get('comprehensive_summary', clinical_data.get('summary', ''))
-            clinical_trial_count = clinical_data.get('total_trials', 0)
-            
-            market_summary = market_data['sections']['summary']
-            market_confidence = market_data['confidence']['level']
-            web_source_count = len(market_data.get('web_results', []))
-            
-            # Try Gemini first (with retry for rate limits), then fall back to Groq, then concatenation
-            import time
-            
-            # Attempt 1: Gemini with retry
-            gemini_api_key = os.getenv('GEMINI_API_KEY') or os.getenv('GOOGLE_API_KEY')
-            if gemini_api_key:
-                for attempt in range(2):  # Max 2 attempts
-                    try:
-                        import requests
-                        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key={gemini_api_key}"
-                        
-                        synthesis_prompt = f"""You are a pharmaceutical intelligence analyst synthesizing insights from multiple specialized research agents.
-
-QUERY: {query}
-
-CLINICAL INTELLIGENCE ({clinical_trial_count} trials analyzed):
-{clinical_summary[:3000]}
-
-MARKET INTELLIGENCE ({web_source_count} sources, {market_confidence} confidence):
-{market_summary[:3000]}
-
-Create a comprehensive executive overview (300-400 words) that:
-1. Synthesizes key insights from BOTH clinical and market perspectives
-2. Highlights critical intersections (e.g., how clinical trial outcomes inform market potential)
-3. Provides actionable intelligence for decision-makers
-4. Balances clinical evidence with market dynamics
-
-Write in clear paragraphs. Do NOT simply concatenate the summaries - synthesize intelligently by drawing connections between clinical and market data."""
-
-                        payload = {
-                            "contents": [{
-                                "parts": [{"text": synthesis_prompt}]
-                            }],
-                            "generationConfig": {
-                                "temperature": 0.5,
-                                "maxOutputTokens": 2000
-                            }
-                        }
-                        
-                        response = requests.post(url, json=payload, timeout=60)
-                        
-                        # Check for rate limit error
-                        if response.status_code == 429:
-                            if attempt == 0:
-                                logger.warning(f"Gemini rate limit hit (attempt {attempt + 1}/2), retrying in 2s...")
-                                time.sleep(2)
-                                continue
-                            else:
-                                logger.warning("Gemini rate limit exhausted after retries, falling back to Groq")
-                                break
-                        
-                        response.raise_for_status()
-                        
-                        result = response.json()
-                        synthesized = result.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-                        
-                        if synthesized and len(synthesized) > 100:
-                            logger.info("✅ Multi-agent overview synthesis completed with Gemini")
-                            return synthesized.strip()
-                        else:
-                            logger.warning("Gemini synthesis too short or empty")
-                            break
-                            
-                    except Exception as e:
-                        logger.error(f"Gemini synthesis attempt {attempt + 1} failed: {e}")
-                        if attempt == 0:
-                            time.sleep(1)
-                            continue
-                        break
-            
-            # Attempt 2: Fall back to Groq
-            groq_api_key = os.getenv('GROQ_API_KEY')
-            if groq_api_key:
+        gemini_api_key = os.getenv('GEMINI_API_KEY') or os.getenv('GOOGLE_API_KEY')
+        if gemini_api_key:
+            for attempt in range(2):
                 try:
-                    logger.info("Attempting overview synthesis with Groq fallback...")
-                    
-                    from config.llm.llm_config_sync import generate_llm_response
-                    
-                    synthesis_prompt = f"""Synthesize a comprehensive overview from both clinical and market intelligence.
-
-Query: {query}
-
-Clinical Findings ({clinical_trial_count} trials):
-{clinical_summary[:2000]}
-
-Market Findings ({web_source_count} sources, {market_confidence} confidence):
-{market_summary[:2000]}
-
-Create a 200-300 word executive overview that combines both perspectives. Focus on actionable insights."""
-                    
-                    synthesized = generate_llm_response(
-                        prompt=synthesis_prompt,
-                        system_prompt="You are a pharmaceutical intelligence analyst. Synthesize clinical and market insights.",
-                        temperature=0.5,
-                        max_tokens=1500
-                    )
-                    
-                    if synthesized and len(synthesized) > 100:
-                        logger.info("✅ Multi-agent overview synthesis completed with Groq fallback")
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key={gemini_api_key}"
+                    payload = {
+                        "contents": [{"parts": [{"text": synthesis_prompt}]}],
+                        "generationConfig": {"temperature": 0.3, "maxOutputTokens": 4000}
+                    }
+                    response = requests.post(url, json=payload, timeout=90)
+                    if response.status_code == 429:
+                        time.sleep(2)
+                        continue
+                    response.raise_for_status()
+                    result = response.json()
+                    synthesized = result.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
+                    if synthesized:
                         return synthesized.strip()
-                        
                 except Exception as e:
-                    logger.error(f"Groq fallback also failed: {e}")
-            
-            # Final fallback: Structured concatenation
-            logger.warning("All LLM synthesis failed, using structured concatenation")
-            return f"""**Overview: {query}**
+                    logger.error(f"Gemini synthesis failed: {e}")
+                    if attempt == 0: continue
+                    break
 
-**Clinical Perspective** ({clinical_trial_count} trials analyzed):
-{clinical_summary[:1500]}
+        # Fallback to Groq
+        groq_api_key = os.getenv('GROQ_API_KEY')
+        if groq_api_key:
+            try:
+                from config.llm.llm_config_sync import generate_llm_response
+                synthesized = generate_llm_response(
+                    prompt=synthesis_prompt,
+                    system_prompt="You are a Chief Research Officer.",
+                    temperature=0.3,
+                    max_tokens=4000
+                )
+                if synthesized: return synthesized.strip()
+            except Exception as e:
+                logger.error(f"Groq fallback failed: {e}")
 
-**Market Perspective** ({web_source_count} sources, {market_confidence} confidence):
-{market_summary[:1500]}
-
-This analysis combines clinical trial evidence with market intelligence to provide comprehensive therapeutic insights."""
-        
-        # Only clinical data available
-        elif has_clinical and not has_market:
-            logger.info("📊 Clinical-only query - returning clinical summary")
-            return clinical_data.get('comprehensive_summary', clinical_data.get('summary', 'No clinical data available'))
-        
-        # Only market data available
-        elif has_market and not has_clinical:
-            logger.info("📊 Market-only query - returning market summary")
-            return market_data['sections']['summary']
-        
-        # No data from either agent
-        else:
-            logger.warning("⚠️ No data from any agent")
-            return "No data available from agents. Please check agent configurations and API keys."
+        return "Analysis generated, but executive summary synthesis failed. Please review individual agent reports."
