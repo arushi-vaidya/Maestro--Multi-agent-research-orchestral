@@ -598,6 +598,7 @@ class MasterAgent:
             'summary': clinical_result.get('comprehensive_summary', clinical_result.get('summary', '')),
             'comprehensive_summary': clinical_result.get('comprehensive_summary', ''),
             'trials': clinical_result.get('trials', []),
+            'raw': clinical_result.get('raw', clinical_result.get('trials', [])),  # Add raw field for normalization
             'references': references,
             'total_trials': trial_count
         }

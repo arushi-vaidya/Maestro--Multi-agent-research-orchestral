@@ -130,6 +130,16 @@ class SectionSynthesizer:
 
         Returns plain text only, no JSON
         """
+        # Get section configuration
+        section_config = self.section_definitions.get(section_id, {})
+        instruction = section_config.get('instruction', '')
+        max_tokens = section_config.get('max_tokens', 200)
+        temperature = section_config.get('temperature', 0.3)
+        section_name = section_id.replace('_', ' ').title()
+        
+        # Use fused_context parameter
+        context = fused_context
+        
         # Truncate context if too long (to fit in LLM context window)
         max_context_length = 4000
         if len(context) > max_context_length:
@@ -144,7 +154,7 @@ USER QUERY:
 {query}
 
 TASK:
-Generate ONLY the "{section_name.replace('_', ' ').title()}" section.
+Generate ONLY the "{section_name}" section.
 
 INSTRUCTIONS:
 {instruction}
@@ -170,7 +180,7 @@ Generate the section now:"""
             response = response.strip()
 
             # Remove any section headers the LLM might add
-            response = self._clean_section_content(response, section_name)
+            response = self._clean_section_content(response, section_id)
 
             return response
 

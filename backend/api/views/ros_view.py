@@ -15,7 +15,7 @@ Endpoint:
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
-from typing import Dict, Literal, Optional
+from typing import Dict, Literal, Optional, Any
 from datetime import datetime
 import logging
 
@@ -43,7 +43,7 @@ class ROSViewResponse(BaseModel):
     breakdown: Dict[str, float]  # evidence_strength, evidence_diversity, conflict_penalty, recency_boost, patent_risk_penalty
     conflict_penalty: float
     explanation: str
-    metadata: Dict[str, any]  # computation_timestamp, num_evidence, distinct_agents
+    metadata: Dict[str, Any]  # computation_timestamp, num_evidence, distinct_agents
 
     class Config:
         json_schema_extra = {

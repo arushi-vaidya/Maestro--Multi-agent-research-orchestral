@@ -1,9 +1,10 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, useLocation } from 'react-router-dom';
 // Legacy pages (preserved for backwards compatibility)
 import LandingPage from './pages/LandingPage';
 import ResearchPage from './pages/ResearchPage';
 import CursorGlow from './components/CursorGlow';
+import Navbar from './components/Navbar';
 // STEP 8: New calm pages
 import {
   Landing,
@@ -15,10 +16,14 @@ import {
 } from './pages/v2';
 import './App.css';
 
-const App: React.FC = () => {
+const AppContent: React.FC = () => {
+  const location = useLocation();
+  const isLegacyRoute = location.pathname.startsWith('/legacy') || location.pathname === '/research';
+
   return (
-    <Router>
+    <>
       <CursorGlow />
+      {!isLegacyRoute && <Navbar />}
       <Routes>
         {/* STEP 8: New calm pages (warm minimalist design) */}
         <Route path="/" element={<Landing />} />
@@ -32,6 +37,14 @@ const App: React.FC = () => {
         <Route path="/legacy" element={<LandingPage />} />
         <Route path="/research" element={<ResearchPage />} />
       </Routes>
+    </>
+  );
+};
+
+const App: React.FC = () => {
+  return (
+    <Router>
+      <AppContent />
     </Router>
   );
 };

@@ -139,6 +139,7 @@ export interface ExecutionStatusResponse {
   agents_completed: string[];
   agents_failed: string[];
   agent_details: AgentExecutionDetail[];
+  agents: AgentExecutionDetail[]; // Alias for agent_details
   ingestion_summary: Record<string, number>;
   execution_time_ms: number;
   query_timestamp: string;

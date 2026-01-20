@@ -8,6 +8,7 @@ interface CalmInputProps {
   className?: string;
   multiline?: boolean;
   rows?: number;
+  disabled?: boolean;
 }
 
 /**
@@ -21,6 +22,7 @@ export const CalmInput: React.FC<CalmInputProps> = ({
   className = '',
   multiline = false,
   rows = 3,
+  disabled = false,
 }) => {
   const inputStyles = `
     w-full px-4 py-3 rounded-lg font-inter
@@ -28,6 +30,7 @@ export const CalmInput: React.FC<CalmInputProps> = ({
     text-warm-text placeholder:text-warm-text-subtle
     focus:outline-none focus:border-terracotta-400
     transition-colors duration-300 ease-out
+    ${disabled ? 'opacity-50 cursor-not-allowed' : ''}
   `;
 
   return (
@@ -43,6 +46,7 @@ export const CalmInput: React.FC<CalmInputProps> = ({
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
           rows={rows}
+          disabled={disabled}
           className={inputStyles}
         />
       ) : (
@@ -51,6 +55,7 @@ export const CalmInput: React.FC<CalmInputProps> = ({
           value={value}
           onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
+          disabled={disabled}
           className={inputStyles}
         />
       )}

@@ -15,14 +15,26 @@ load_dotenv()
 
 from config.llm.llm_config_sync import generate_llm_response
 
-# Import RAG components (existing)
-try:
-    from vector_store.rag_engine import RAGEngine
-    from vector_store.document_ingestion import DocumentIngestion, create_sample_market_corpus
-    RAG_AVAILABLE = True
-except ImportError:
-    RAG_AVAILABLE = False
-    print("⚠️  RAG not available. Market Agent will use web search only.")
+# Import RAG components (existing) - with lazy loading
+RAG_AVAILABLE = False
+RAGEngine = None
+DocumentIngestion = None
+create_sample_market_corpus = None
+
+def _try_load_rag():
+    global RAG_AVAILABLE, RAGEngine, DocumentIngestion, create_sample_market_corpus
+    if RAG_AVAILABLE:
+        return
+    try:
+        from vector_store.rag_engine import RAGEngine as _RAGEngine
+        from vector_store.document_ingestion import DocumentIngestion as _DocumentIngestion, create_sample_market_corpus as _create_sample_market_corpus
+        RAGEngine = _RAGEngine
+        DocumentIngestion = _DocumentIngestion
+        create_sample_market_corpus = _create_sample_market_corpus
+        RAG_AVAILABLE = True
+    except Exception as e:
+        RAG_AVAILABLE = False
+        print(f"⚠️  RAG not available: {e}. Market Agent will use web search only.")
 
 # Import Web Search component (new)
 try:
@@ -100,6 +112,7 @@ class MarketAgentHybrid:
         self.agent_id = "market"
 
         # Initialize RAG engine (existing logic)
+        _try_load_rag()  # Load RAG lazily
         self.use_rag = use_rag and RAG_AVAILABLE
         if self.use_rag:
             try:

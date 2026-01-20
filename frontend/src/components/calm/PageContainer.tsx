@@ -20,7 +20,7 @@ export const PageContainer: React.FC<PageContainerProps> = ({
   };
 
   return (
-    <div className={`min-h-screen bg-warm-bg font-inter`}>
+    <div className={`min-h-screen bg-warm-bg font-inter pt-16`}>
       <div className={`${widthStyles[maxWidth]} mx-auto px-6 py-12 ${className}`}>
         {children}
       </div>

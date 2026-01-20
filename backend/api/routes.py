@@ -13,6 +13,7 @@ from agents.master_agent import MasterAgent
 
 # STEP 7.6: Import API façade views
 from api.views.cache import get_cache
+from ros.scorer import calculate_ros
 from api.views import ros_view, graph_view, evidence_view, conflict_view, execution_view
 
 # Set up logging
@@ -116,16 +117,24 @@ def process_query(request: QueryRequest):
 
         logger.info(f"Query processed successfully. Insights: {len(result.get('insights', []))}")
 
+        # Calculate ROS score from results
+        ros_result = calculate_ros(
+            query=request.query,
+            references=result.get('references', []),
+            insights=result.get('insights', [])
+        )
+        logger.info(f"✅ ROS Score calculated: {ros_result['ros_score']:.2f}")
+
         # STEP 7.6: Cache results for API façade views
         cache = get_cache()
         cache.store_query_result(
             query=request.query,
             response=result,
-            ros_result=result.get('ros_results'),
+            ros_result=ros_result,
             akgp_result=None,  # Can be populated if needed
             execution_metadata=result.get('execution_metadata'),
-            drug_id=None,  # Can be extracted from result if needed
-            disease_id=None  # Can be extracted from result if needed
+            drug_id=ros_result['metadata'].get('drug_name'),
+            disease_id=ros_result['metadata'].get('disease_name')
         )
         logger.info("✅ Results cached for API façade views")
 
