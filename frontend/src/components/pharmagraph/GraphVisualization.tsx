@@ -76,76 +76,106 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({
     SUPPORTS: '#14B8A6',
   }), []);
 
-  // Custom node rendering
+  // Custom node rendering (Card Style)
   const nodeCanvasObject = useCallback(
     (node: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
       const label = node.label;
       const isSelected = selectedNode?.id === node.id;
       const isHighlighted = highlightedPath.includes(node.id);
-      const isComparator = node.metadata?.isComparator === true;
       const isEvidence = node.type === 'evidence' || node.type === 'trial';
+      
+      // Card dimensions
+      const width = 140;
+      const height = 50;
+      const radius = 6;
+      const x = node.x - width / 2;
+      const y = node.y - height / 2;
 
-      // PRIORITY 4: De-emphasize comparator drugs
-      const fontSize = 12 / globalScale;
-      let nodeSize = isSelected ? 8 : isHighlighted ? 6 : 5;
-
-      // PRIORITY 6: Emphasize evidence nodes
-      if (isEvidence && !isComparator) {
-        nodeSize = isSelected ? 9 : isHighlighted ? 7 : 6;
+      // Colors
+      const typeColor = (nodeColors as any)[node.type] || '#64748B';
+      const bgColor = isSelected ? '#FFFFFF' : '#F8FAFC'; // White if selected, slate-50 if not
+      const borderColor = isSelected ? '#1E293B' : (isHighlighted ? typeColor : '#E2E8F0');
+      
+      // Shadow for selected nodes
+      if (isSelected) {
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.15)';
+        ctx.shadowBlur = 15;
+        ctx.shadowOffsetX = 0;
+        ctx.shadowOffsetY = 4;
+      } else {
+        ctx.shadowColor = 'transparent';
+        ctx.shadowBlur = 0;
       }
 
-      // Comparators are smaller and greyed
-      if (isComparator) {
-        nodeSize = isSelected ? 5 : 3.5;
-      }
-
-      // Draw node circle
+      // Draw Card Background (Rounded Rect)
       ctx.beginPath();
-      ctx.arc(node.x, node.y, nodeSize, 0, 2 * Math.PI);
-
-      // PRIORITY 4: Reduce opacity for comparators
-      const baseColor = (nodeColors as any)[node.type] || '#64748B';
-      if (isComparator) {
-        ctx.globalAlpha = 0.35; // Greyed out comparators
-        ctx.fillStyle = '#94A3B8'; // Slate-400 (neutral grey)
-      } else {
-        ctx.globalAlpha = 1.0;
-        ctx.fillStyle = baseColor;
-      }
-
+      ctx.moveTo(x + radius, y);
+      ctx.lineTo(x + width - radius, y);
+      ctx.quadraticCurveTo(x + width, y, x + width, y + radius);
+      ctx.lineTo(x + width, y + height - radius);
+      ctx.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+      ctx.lineTo(x + radius, y + height);
+      ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+      ctx.lineTo(x, y + radius);
+      ctx.quadraticCurveTo(x, y, x + radius, y);
+      ctx.closePath();
+      
+      ctx.fillStyle = bgColor;
       ctx.fill();
-      ctx.globalAlpha = 1.0;
+      
+      // Draw Border
+      ctx.strokeStyle = borderColor;
+      ctx.lineWidth = isSelected || isHighlighted ? 2 : 1;
+      ctx.stroke();
+      
+      // Reset Shadow
+      ctx.shadowColor = 'transparent';
 
-      // Highlight border for selected/highlighted nodes
-      if (isSelected || isHighlighted) {
-        ctx.strokeStyle = isSelected ? '#1E293B' : '#64748B';
-        ctx.lineWidth = isSelected ? 2 : 1;
-        ctx.stroke();
-      }
+      // Draw Left Color Strip (Type Indicator)
+      ctx.beginPath();
+      ctx.moveTo(x + radius, y);
+      ctx.lineTo(x + 4, y);
+      ctx.lineTo(x + 4, y + height);
+      ctx.lineTo(x + radius, y + height);
+      ctx.quadraticCurveTo(x, y + height, x, y + height - radius);
+      ctx.lineTo(x, y + radius);
+      ctx.quadraticCurveTo(x, y, x + radius, y);
+      ctx.closePath();
+      ctx.fillStyle = typeColor;
+      ctx.fill();
 
-      // PRIORITY 6: Add visual indicator for evidence nodes
-      if (isEvidence && !isComparator) {
-        ctx.strokeStyle = '#059669'; // Emerald border for evidence
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-      }
-
-      // Draw label
-      ctx.font = `${fontSize}px Sans-Serif`;
-      ctx.textAlign = 'center';
+      // Text Formatting
+      // 1. Label
+      const fontSizeLabel = 14;
+      ctx.font = `600 ${fontSizeLabel}px Inter, system-ui, sans-serif`;
+      ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
-
-      // PRIORITY 4: Lighter text for comparators
-      if (isComparator) {
-        ctx.fillStyle = '#94A3B8';
-        ctx.globalAlpha = 0.5;
-      } else {
-        ctx.fillStyle = '#1E293B';
-        ctx.globalAlpha = 1.0;
+      ctx.fillStyle = '#1E293B'; // Slate-800
+      
+      // Truncate label if too long
+      let displayLabel = label;
+      const maxLabelWidth = width - 20;
+      if (ctx.measureText(displayLabel).width > maxLabelWidth) {
+        while (ctx.measureText(displayLabel + '...').width > maxLabelWidth && displayLabel.length > 0) {
+          displayLabel = displayLabel.slice(0, -1);
+        }
+        displayLabel += '...';
       }
+      ctx.fillText(displayLabel, x + 12, y + 20);
 
-      ctx.fillText(label, node.x, node.y + nodeSize + fontSize);
-      ctx.globalAlpha = 1.0;
+      // 2. Type (Subtitle)
+      const fontSizeType = 10;
+      ctx.font = `400 ${fontSizeType}px Inter, system-ui, sans-serif`;
+      ctx.fillStyle = typeColor; // Use type color for text
+      ctx.fillText(node.type.toUpperCase(), x + 12, y + 38);
+      
+      // Evidence Indicator (Badge)
+      if (isEvidence) {
+         ctx.beginPath();
+         ctx.arc(x + width - 12, y + 12, 4, 0, 2 * Math.PI);
+         ctx.fillStyle = '#10B981'; // Emerald
+         ctx.fill();
+      }
     },
     [selectedNode, highlightedPath, nodeColors]
   );
@@ -215,14 +245,24 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({
     [onNodeClick]
   );
 
-  // Zoom to fit on mount
+  // Zoom to fit on mount and configure forces
   useEffect(() => {
-    if (graphRef.current && nodes.length > 0) {
-      setTimeout(() => {
-        graphRef.current.zoomToFit(400, 50);
-      }, 100);
+    if (graphRef.current) {
+      // Configure forces for card layout
+      // Stronger repulsion to prevent card overlap
+      graphRef.current.d3Force('charge').strength(-800);
+      // Longer links to accommodate card width
+      graphRef.current.d3Force('link').distance(200);
+      // Gentle centering
+      graphRef.current.d3Force('center').strength(0.05);
+
+      if (nodes.length > 0) {
+        setTimeout(() => {
+          graphRef.current.zoomToFit(400, 50);
+        }, 500); // Wait for simulation to settle a bit
+      }
     }
-  }, [nodes.length]);
+  }, [nodes.length, edges.length]);
 
   return (
     <div className="w-full h-[600px] bg-slate-50 relative">
@@ -238,10 +278,11 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({
         linkDirectionalArrowRelPos={1}
         enableNodeDrag={true}
         cooldownTicks={100}
+        d3AlphaDecay={0.02} // Slower decay for better settling
+        d3VelocityDecay={0.3}
         onEngineStop={() => graphRef.current?.zoomToFit(400, 50)}
         backgroundColor="#F8FAFC"
         linkColor={() => '#CBD5E1'}
-        d3VelocityDecay={0.3}
       />
 
       {/* PRIORITY 5: Edge Semantics Legend */}
