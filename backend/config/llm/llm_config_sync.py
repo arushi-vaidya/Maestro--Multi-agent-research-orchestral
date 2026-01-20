@@ -131,10 +131,10 @@ def _generate_gemini(
     # Try different model + endpoint combinations
     # Format: (model_name, api_version)
     model_configs = [
-        ("gemini-1.5-flash", "v1"),
-        ("gemini-1.5-flash", "v1beta"),
-        ("gemini-1.5-pro", "v1"),
-        ("gemini-1.5-pro", "v1beta"),
+        ("gemini-2.5-flash", "v1"),
+        ("gemini-2.5-flash", "v1beta"),
+        ("gemini-2.5-pro", "v1"),
+        ("gemini-2.5-pro", "v1beta"),
         ("gemini-pro", "v1"),
         ("gemini-pro", "v1beta"),
     ]
