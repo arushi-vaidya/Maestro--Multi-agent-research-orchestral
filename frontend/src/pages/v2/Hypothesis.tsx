@@ -174,17 +174,20 @@ export const Hypothesis: React.FC = () => {
   // --- UI SECTIONS ---
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50/30 to-purple-50/20">
-      <PageContainer maxWidth="lg">
+    <div className="min-h-screen bg-white">
+      {/* Subtle gradient overlay */}
+      <div className="absolute inset-0 bg-gradient-to-b from-indigo-50/20 via-white to-white pointer-events-none" />
+      
+      <PageContainer maxWidth="lg" className="relative">
         
-        {/* 1. CONSOLE HEADER with enhanced design */}
+        {/* 1. CONSOLE HEADER with clean design */}
         <div className="flex items-center justify-between mb-10 pt-8">
           <div>
             <div className="flex items-center gap-4 mb-2">
-              <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-purple-600 rounded-xl flex items-center justify-center shadow-lg">
+              <div className="w-12 h-12 bg-indigo-600 rounded-xl flex items-center justify-center shadow-md">
                 <Sparkles className="w-6 h-6 text-white" />
               </div>
-              <h1 className="text-4xl font-extrabold bg-gradient-to-r from-slate-900 to-purple-900 bg-clip-text text-transparent font-inter tracking-tight">
+              <h1 className="text-4xl font-extrabold text-slate-900 font-inter tracking-tight">
                 Research Console
               </h1>
             </div>
@@ -197,53 +200,49 @@ export const Hypothesis: React.FC = () => {
           </div>
         </div>
 
-        {/* 2. INPUT PANEL with premium styling */}
-        <div className={`relative bg-white rounded-3xl shadow-xl border-2 ${consoleState === 'EXECUTING' ? 'border-amber-300' : 'border-slate-200'} p-8 mb-10 transition-all duration-500 ${consoleState === 'COMPLETED' ? 'opacity-90' : 'opacity-100'}`}>
-          <div className="absolute -inset-1 bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 rounded-3xl opacity-0 hover:opacity-10 transition-opacity blur" />
-          <div className="relative">
-            <div className="mb-5">
-              <label className="flex items-center gap-2 text-sm font-bold text-slate-700 uppercase tracking-wider mb-3 font-inter">
-                <FileText className="w-4 h-4" />
-                Research Hypothesis
-              </label>
-              <CalmInput 
-                value={query}
-                onChange={(val) => {
-                  if (consoleState === 'COMPLETED') {
-                    setExecutionData(null);
-                    setRosData(null);
-                  }
-                  setQuery(val);
-                }}
-                placeholder="e.g. Semaglutide for Alzheimer's disease"
-                multiline
-                rows={3}
-                disabled={consoleState !== 'IDLE' && consoleState !== 'COMPLETED'}
-                className="text-lg font-inter bg-slate-50 border-slate-200"
-              />
-            </div>
-
-            {(consoleState === 'IDLE' || consoleState === 'COMPLETED') && (
-              <div className="flex justify-end">
-                <button
-                  onClick={handleAnalyze}
-                  disabled={!query.trim()}
-                  className="group relative inline-flex items-center gap-3 px-8 py-4 bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white rounded-xl font-bold shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none font-inter"
-                >
-                  <Sparkles className="w-5 h-5 group-hover:rotate-12 transition-transform" />
-                  <span>Analyze Research Opportunity</span>
-                  <div className="absolute inset-0 bg-gradient-to-r from-blue-400 to-purple-500 rounded-xl blur opacity-50 group-hover:opacity-75 transition-opacity -z-10" />
-                </button>
-              </div>
-            )}
-
-            {error && (
-              <div className="mt-5 p-4 bg-gradient-to-r from-rose-50 to-pink-50 border-2 border-rose-200 rounded-2xl flex items-start gap-3 shadow-md">
-                <AlertCircle className="w-6 h-6 text-rose-600 flex-shrink-0 mt-0.5" />
-                <p className="text-sm text-rose-800 font-inter font-medium">{error}</p>
-              </div>
-            )}
+        {/* 2. INPUT PANEL with clean minimal styling */}
+        <div className={`bg-white rounded-2xl shadow-md border ${consoleState === 'EXECUTING' ? 'border-indigo-300' : 'border-slate-200'} p-8 mb-10 transition-all duration-500`}>
+          <div className="mb-5">
+            <label className="flex items-center gap-2 text-sm font-bold text-slate-700 uppercase tracking-wider mb-3 font-inter">
+              <FileText className="w-4 h-4" />
+              Research Hypothesis
+            </label>
+            <CalmInput 
+              value={query}
+              onChange={(val) => {
+                if (consoleState === 'COMPLETED') {
+                  setExecutionData(null);
+                  setRosData(null);
+                }
+                setQuery(val);
+              }}
+              placeholder="e.g. Semaglutide for Alzheimer's disease"
+              multiline
+              rows={3}
+              disabled={consoleState !== 'IDLE' && consoleState !== 'COMPLETED'}
+              className="text-lg font-inter bg-slate-50 border-slate-200"
+            />
           </div>
+
+          {(consoleState === 'IDLE' || consoleState === 'COMPLETED') && (
+            <div className="flex justify-end">
+              <button
+                onClick={handleAnalyze}
+                disabled={!query.trim()}
+                className="inline-flex items-center gap-3 px-8 py-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold shadow-lg hover:shadow-xl transition-all duration-300 disabled:opacity-50 disabled:cursor-not-allowed font-inter"
+              >
+                <Sparkles className="w-5 h-5" />
+                <span>Analyze Research Opportunity</span>
+              </button>
+            </div>
+          )}
+
+          {error && (
+            <div className="mt-5 p-4 bg-red-50 border border-red-200 rounded-xl flex items-start gap-3">
+              <AlertCircle className="w-6 h-6 text-red-600 flex-shrink-0 mt-0.5" />
+              <p className="text-sm text-red-800 font-inter font-medium">{error}</p>
+            </div>
+          )}
         </div>
 
       {/* 3. AGENT EXECUTION PANEL (Visible during & after execution) */}
