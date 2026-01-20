@@ -8,15 +8,23 @@ import requests
 from typing import Optional
 import logging
 import time
+import random
 
 logger = logging.getLogger(__name__)
+
+def _backoff_sleep(attempt: int, base: float = 1.0, cap: float = 8.0) -> None:
+    """Sleep with exponential backoff + jitter to ease rate limits."""
+    delay = min(cap, base * (2 ** attempt))
+    jitter = random.uniform(0, delay / 2)
+    time.sleep(delay + jitter)
+
 
 def generate_llm_response(
     prompt: str,
     system_prompt: Optional[str] = None,
     temperature: float = 0.7,
     max_tokens: int = 2000,
-    max_retries: int = 2  # NEW: Add retry parameter
+    max_retries: int = 4  # Slightly higher to absorb transient 429s
 ) -> str:
     """
     Generate LLM response using available APIs
@@ -41,13 +49,13 @@ def generate_llm_response(
             try:
                 return _generate_groq(prompt, system_prompt, temperature, max_tokens, groq_api_key)
             except requests.exceptions.HTTPError as e:
-                if e.response.status_code == 429 and attempt < max_retries - 1:
-                    wait_time = (2 ** attempt)  # Exponential backoff: 1s, 2s, 4s...
-                    logger.warning(f"Groq rate limit hit (attempt {attempt + 1}/{max_retries}), retrying in {wait_time}s...")
-                    time.sleep(wait_time)
+                status = e.response.status_code if e.response else "unknown"
+                if status == 429 and attempt < max_retries - 1:
+                    logger.warning(f"Groq rate limit hit (attempt {attempt + 1}/{max_retries}), backing off...")
+                    _backoff_sleep(attempt)
                     continue
                 else:
-                    logger.warning(f"Groq API failed: {e}, trying Gemini...")
+                    logger.warning("Groq API failed (status %s): %s, trying Gemini...", status, e)
                     break
             except Exception as e:
                 logger.warning(f"Groq API failed: {e}, trying Gemini...")
@@ -59,13 +67,18 @@ def generate_llm_response(
             try:
                 return _generate_gemini(prompt, system_prompt, temperature, max_tokens, gemini_api_key)
             except requests.exceptions.HTTPError as e:
-                if e.response.status_code == 429 and attempt < max_retries - 1:
-                    wait_time = (2 ** attempt)
-                    logger.warning(f"Gemini rate limit hit (attempt {attempt + 1}/{max_retries}), retrying in {wait_time}s...")
-                    time.sleep(wait_time)
+                status = e.response.status_code if e.response else "unknown"
+                body = e.response.text[:400] if e.response and e.response.text else ""
+                if status == 429 and attempt < max_retries - 1:
+                    logger.warning(
+                        "Gemini rate limit hit (attempt %s/%s), backing off...",
+                        attempt + 1,
+                        max_retries,
+                    )
+                    _backoff_sleep(attempt)
                     continue
                 else:
-                    logger.error(f"Gemini API failed: {e}")
+                    logger.error("Gemini API failed (status %s): %s", status, body)
                     raise
             except Exception as e:
                 logger.error(f"Gemini API failed: {e}")
@@ -114,29 +127,60 @@ def _generate_gemini(
     max_tokens: int,
     api_key: str
 ) -> str:
-    """Generate using Gemini API"""
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key={api_key}"
-
+    """Generate using Gemini API with multi-model and multi-endpoint fallback."""
+    # Try different model + endpoint combinations
+    # Format: (model_name, api_version)
+    model_configs = [
+        ("gemini-2.5-flash", "v1"),
+        ("gemini-2.5-flash", "v1beta"),
+        ("gemini-2.5-pro", "v1"),
+        ("gemini-2.5-pro", "v1beta"),
+        ("gemini-pro", "v1"),
+        ("gemini-pro", "v1beta"),
+    ]
+    
     # Combine system prompt with user prompt for Gemini
     full_prompt = prompt
     if system_prompt:
         full_prompt = f"{system_prompt}\n\n{prompt}"
 
-    payload = {
+    payload_template = {
         "contents": [{
             "parts": [{"text": full_prompt}]
         }],
         "generationConfig": {
             "temperature": temperature,
-            "maxOutputTokens": min(max_tokens, 8192)  # Gemini 2.0 limit: 8192 tokens
+            "maxOutputTokens": min(max_tokens, 8192)
         }
     }
 
-    response = requests.post(url, json=payload, timeout=60)  # Increased timeout
-    response.raise_for_status()
-
-    result = response.json()
-    return result["candidates"][0]["content"]["parts"][0]["text"]
+    last_error = None
+    for model, api_version in model_configs:
+        try:
+            url = f"https://generativelanguage.googleapis.com/{api_version}/models/{model}:generateContent?key={api_key}"
+            response = requests.post(url, json=payload_template, timeout=60)
+            response.raise_for_status()
+            
+            result = response.json()
+            logger.info(f"✅ Gemini model {model} ({api_version}) succeeded")
+            return result["candidates"][0]["content"]["parts"][0]["text"]
+            
+        except requests.exceptions.HTTPError as e:
+            status = e.response.status_code if e.response else "unknown"
+            error_body = e.response.text[:200] if e.response and e.response.text else "no response body"
+            logger.warning(f"Gemini {model} ({api_version}) failed (status {status}): {error_body}")
+            last_error = e
+            continue
+        except Exception as e:
+            logger.warning(f"Gemini {model} ({api_version}) failed: {str(e)[:200]}")
+            last_error = e
+            continue
+    
+    # If all models failed, raise the last error
+    if last_error:
+        raise last_error
+    else:
+        raise Exception("All Gemini model/endpoint combinations failed")
 
 
 # Test function

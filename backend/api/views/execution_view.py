@@ -120,18 +120,20 @@ def get_execution_status(response: Response):
 
         cache = get_cache()
 
-        # Check if cache has data
+        # If no execution yet, return an empty-but-valid payload so UI doesn't spam 404s
         if cache.is_empty():
-            # Log at debug level since this is expected during polling
-            logger.debug("Execution status requested but cache is empty (no query executed yet)")
-            raise HTTPException(
-                status_code=404,
-                detail={
-                    "error": "No execution data available",
-                    "message": "No query has been executed yet. Please submit a query via POST /api/query first.",
-                    "suggestion": "This is normal on initial page load or before the first query."
-                }
-            )
+          logger.debug(
+              "Execution status requested but cache is empty (no query executed yet)"
+          )
+          raise HTTPException(
+              status_code=404,
+              detail={
+                  "error": "No execution data available",
+                  "message": "No query has been executed yet. Please submit a query via POST /api/query first.",
+                  "suggestion": "This is normal on initial page load or before the first query."
+              }
+          )
+
 
         # Get execution metadata from cache
         execution_metadata = cache.get_last_execution_metadata()

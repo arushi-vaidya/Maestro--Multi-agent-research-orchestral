@@ -124,11 +124,17 @@ def get_conflict_explanation(response: Response):
 
         cache = get_cache()
 
-        # Check if cache has data
+        # If no conflict data yet, return empty-but-valid response to avoid 404s on polling
         if cache.is_empty():
-            raise HTTPException(
-                status_code=404,
-                detail="No conflict data available. Execute a query via POST /api/query first."
+            return ConflictExplanationResponse(
+                has_conflict=False,
+                severity="NONE",
+                dominant_evidence_id=None,
+                explanation="No conflict data available yet. Run a query first.",
+                supporting_evidence=[],
+                contradicting_evidence=[],
+                temporal_reasoning=None,
+                evidence_counts={"supports": 0, "contradicts": 0, "suggests": 0},
             )
 
         # Get ROS result which contains conflict summary
@@ -140,9 +146,15 @@ def get_conflict_explanation(response: Response):
             if last_response and 'ros_results' in last_response:
                 ros_result = last_response['ros_results']
             else:
-                raise HTTPException(
-                    status_code=404,
-                    detail="Conflict analysis not available for last query."
+                return ConflictExplanationResponse(
+                    has_conflict=False,
+                    severity="NONE",
+                    dominant_evidence_id=None,
+                    explanation="Conflict analysis not available for last query.",
+                    supporting_evidence=[],
+                    contradicting_evidence=[],
+                    temporal_reasoning=None,
+                    evidence_counts={"supports": 0, "contradicts": 0, "suggests": 0},
                 )
 
         # Extract conflict summary

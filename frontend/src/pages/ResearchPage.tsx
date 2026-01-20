@@ -442,6 +442,19 @@ ${idx + 1}. [${ref.nct_id ? 'CLINICAL TRIAL' : (ref.type?.toUpperCase() || 'REFE
                 <span className="text-sm text-gray-300">Analysis Complete</span>
               </div>
             )}
+            <button
+              onClick={() => {
+                setResults(null);
+                setQuery('');
+                setActiveAgents([]);
+                setAgentLogs({});
+                setSelectedAgent(null);
+              }}
+              className="px-4 py-2 rounded-lg bg-purple-500/20 border border-purple-500/50 hover:border-purple-500/70 text-sm font-medium text-purple-300 hover:text-purple-200 transition-all flex items-center gap-2"
+            >
+              <X className="w-4 h-4" />
+              New Query
+            </button>
           </div>
         </div>
       </header>
