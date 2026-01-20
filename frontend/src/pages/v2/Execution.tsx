@@ -6,14 +6,25 @@
 import React, { useEffect, useState } from 'react';
 import { PageContainer, CalmCard, CalmBadge } from '../../components/calm';
 import { api } from '../../services/api';
+import { useQueryRefresh } from '../../context/QueryContext';
 import type { ExecutionStatusResponse } from '../../types/api';
 
 export const Execution: React.FC = () => {
+  // Query refresh hook
+  const { queryCount } = useQueryRefresh();
+
   const [execution, setExecution] = useState<ExecutionStatusResponse | null>(null);
 
   useEffect(() => {
-    api.getExecutionStatus().then(setExecution).catch(console.error);
-  }, []);
+    console.log('[Execution] Fetching execution data (queryCount:', queryCount, ')');
+    setExecution(null); // Clear old data
+    api.getExecutionStatus()
+      .then((data) => {
+        console.log('[Execution] Execution data loaded:', data);
+        setExecution(data);
+      })
+      .catch(console.error);
+  }, [queryCount]);
 
   const statusVariant = (status: string) => {
     if (status === 'completed') return 'positive';

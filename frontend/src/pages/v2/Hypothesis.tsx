@@ -18,6 +18,7 @@ import {
   ROSResultCard
 } from '../../components/calm';
 import { api } from '../../services/api';
+import { useQueryRefresh } from '../../context/QueryContext';
 import type { ROSViewResponse, ExecutionStatusResponse } from '../../types/api';
 import { 
   Sparkles, 
@@ -46,6 +47,7 @@ const AGENTS = [
 
 export const Hypothesis: React.FC = () => {
   const navigate = useNavigate();
+  const { notifyQuerySubmitted } = useQueryRefresh();
 
   // --- STATE ---
   const [consoleState, setConsoleState] = useState<ConsoleState>('IDLE');
@@ -63,10 +65,11 @@ export const Hypothesis: React.FC = () => {
     if (!query.trim()) return;
 
     // Transition: IDLE -> SUBMITTING
+    // Clear ALL previous query data first
     setConsoleState('SUBMITTING');
     setError(null);
-    setExecutionData(null);
-    setRosData(null);
+    setExecutionData(null); // Clear old execution
+    setRosData(null); // Clear old ROS results
 
     try {
       // Start the heavy job
@@ -84,6 +87,8 @@ export const Hypothesis: React.FC = () => {
       console.error('Analysis failed:', err);
       setError(err?.response?.data?.detail || 'System failed to execute analysis. Please try again.');
       setConsoleState('IDLE'); // Reset on error
+      setExecutionData(null);
+      setRosData(null);
     }
   };
 
@@ -98,6 +103,10 @@ export const Hypothesis: React.FC = () => {
       setExecutionData(finalExecution);
       setRosData(finalRos);
       setConsoleState('COMPLETED');
+      
+      // Notify all pages that a new query has been completed
+      console.log('[Hypothesis] Query completed, notifying pages...');
+      notifyQuerySubmitted();
     } catch (err) {
       console.error('Failed to fetch results:', err);
       // Fallback: stay in executing or show partial error? 
@@ -186,16 +195,23 @@ export const Hypothesis: React.FC = () => {
            </label>
            <CalmInput 
              value={query}
-             onChange={setQuery}
+             onChange={(val) => {
+               // When user starts typing a new query, clear old results
+               if (consoleState === 'COMPLETED') {
+                 setExecutionData(null);
+                 setRosData(null);
+               }
+               setQuery(val);
+             }}
              placeholder="e.g. Semaglutide for Alzheimer's disease"
              multiline
              rows={3}
-             disabled={consoleState !== 'IDLE'}
+             disabled={consoleState !== 'IDLE' && consoleState !== 'COMPLETED'}
              className="text-lg font-inter"
            />
         </div>
 
-        {consoleState === 'IDLE' && (
+        {(consoleState === 'IDLE' || consoleState === 'COMPLETED') && (
           <div className="flex justify-end">
             <CalmButton 
               onClick={handleAnalyze}
