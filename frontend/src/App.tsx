@@ -13,7 +13,10 @@ import {
   Timeline,
   Conflicts,
   Execution,
+  ConfidenceScoring,
 } from './pages/v2';
+// Query context for cross-page state management
+import { QueryProvider } from './context/QueryContext';
 import './App.css';
 
 const AppContent: React.FC = () => {
@@ -32,6 +35,7 @@ const AppContent: React.FC = () => {
         <Route path="/timeline" element={<Timeline />} />
         <Route path="/conflicts" element={<Conflicts />} />
         <Route path="/execution" element={<Execution />} />
+        <Route path="/confidence" element={<ConfidenceScoring />} />
 
         {/* Legacy routes (preserved for backwards compatibility) */}
         <Route path="/legacy" element={<LandingPage />} />
@@ -43,9 +47,11 @@ const AppContent: React.FC = () => {
 
 const App: React.FC = () => {
   return (
-    <Router>
-      <AppContent />
-    </Router>
+    <QueryProvider>
+      <Router>
+        <AppContent />
+      </Router>
+    </QueryProvider>
   );
 };
 

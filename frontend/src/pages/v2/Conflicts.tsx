@@ -16,26 +16,38 @@ import {
   ProvenancePanel,
 } from '../../components/conflicts';
 import { api } from '../../services/api';
+import { useQueryRefresh } from '../../context/QueryContext';
 import type { ConflictExplanationResponse } from '../../types/api';
 
 export const Conflicts: React.FC = () => {
+  // Query refresh hook
+  const { queryCount } = useQueryRefresh();
+
   const [conflicts, setConflicts] = useState<ConflictExplanationResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    api
-      .getConflictExplanation()
+    console.log('[Conflicts] Fetching conflicts data (queryCount:', queryCount, ')');
+
+    setLoading(true);
+    setConflicts(null); // Clear old data
+    setError(null);
+
+    api.getConflictExplanation()
       .then((data) => {
+        console.log('[Conflicts] Conflicts data loaded:', data);
         setConflicts(data);
-        setLoading(false);
       })
       .catch((err) => {
         console.error('Error fetching conflict explanation:', err);
         setError('Unable to load conflict data. Please run a query first.');
+      })
+      .finally(() => {
         setLoading(false);
       });
-  }, []);
+  }, [queryCount]);
+
 
   // Extract unique agents from evidence
   const getAgentsInvolved = (): string[] => {
