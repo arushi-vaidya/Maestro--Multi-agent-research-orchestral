@@ -13,7 +13,7 @@ Endpoint:
 - GET /api/ros/latest: Get ROS score for last queried drug-disease pair
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel
 from typing import Dict, Literal, Optional, Any
 from datetime import datetime
@@ -76,7 +76,7 @@ class ROSViewResponse(BaseModel):
 # ==============================================================================
 
 @router.get("/latest", response_model=ROSViewResponse)
-def get_latest_ros():
+def get_latest_ros(response: Response):
     """
     Get ROS score for last queried drug-disease pair
 
@@ -94,10 +94,17 @@ def get_latest_ros():
         500: Error reading cached results
     """
     try:
+        # Prevent caching
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+
         cache = get_cache()
 
         # Check if cache has data
         if cache.is_empty():
+            # Log at debug level since this is expected during polling
+            logger.debug("ROS results requested but cache is empty (no query executed yet)")
             raise HTTPException(
                 status_code=404,
                 detail="No ROS results available. Execute a query via POST /api/query first."

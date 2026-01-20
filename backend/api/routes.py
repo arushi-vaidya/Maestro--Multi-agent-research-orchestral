@@ -3,7 +3,7 @@ MAESTRO API Routes
 Feature 1: Basic query processing endpoint
 STEP 7.6: API Façade Layer
 """
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 import logging
@@ -95,7 +95,7 @@ class QueryResponse(BaseModel):
     total_trials: Optional[int] = None              # Clinical results count
 
 @router.post("/query", response_model=QueryResponse)
-def process_query(request: QueryRequest):
+def process_query(request: QueryRequest, response: Response):
     """
     Main query processing endpoint
 
@@ -107,6 +107,11 @@ def process_query(request: QueryRequest):
     5. STEP 7.6: Caches results for API façade views
     """
     try:
+        # Prevent caching of query results
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+
         logger.info(f"Received query: {request.query[:100]}...")
 
         # Get Master Agent
