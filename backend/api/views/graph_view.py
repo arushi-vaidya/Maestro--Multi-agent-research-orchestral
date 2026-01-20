@@ -174,7 +174,8 @@ def _build_node_metadata(node: Dict[str, Any]) -> Dict[str, Any]:
 @router.get("/summary", response_model=GraphSummaryResponse)
 def get_graph_summary(
     node_limit: int = Query(100, description="Maximum nodes to return", ge=1, le=1000),
-    include_evidence: bool = Query(False, description="Include evidence nodes (can be large)")
+    include_evidence: bool = Query(False, description="Include evidence nodes (can be large)"),
+    query_id: Optional[str] = Query(None, description="Query ID (currently informational; graph reflects latest state)")
 ):
     """
     Get knowledge graph summary for visualization

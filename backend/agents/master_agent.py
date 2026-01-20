@@ -727,7 +727,7 @@ class MasterAgent:
         - Add new fields (market_intelligence, confidence_score)
         - Namespace market data separately (no flattening)
         - Merge references with agentId for filtering
-        - Generate intelligent overview summary (LLM synthesis)
+        - Generate intelligent overview summary (LLM synthesis with graceful fallback)
         """
         clinical_data = results.get('clinical', {})
         market_data = results.get('market', {})
@@ -735,8 +735,16 @@ class MasterAgent:
         literature_data = results.get('literature', {})
         execution_status = execution_status or []
 
-        # 1. BUILD OVERVIEW SUMMARY (Intelligent Synthesis)
-        summary = self._synthesize_overview_summary(query, clinical_data, market_data, patent_data, literature_data)
+        # 1. BUILD OVERVIEW SUMMARY (Intelligent Synthesis with robust fallback)
+        try:
+            summary = self._synthesize_overview_summary(query, clinical_data, market_data, patent_data, literature_data)
+            # If we got the error message, fall back to constructed summary
+            if "synthesis failed" in summary.lower():
+                logger.warning("LLM synthesis returned error message, using constructed summary instead")
+                summary = self._construct_summary_fallback(query, clinical_data, market_data, patent_data, literature_data)
+        except Exception as e:
+            logger.error(f"Overview summary synthesis exception: {e}, using fallback")
+            summary = self._construct_summary_fallback(query, clinical_data, market_data, patent_data, literature_data)
 
         # 2. BUILD INSIGHTS ARRAY
         insights = []
@@ -1076,46 +1084,127 @@ STYLE RULES:
 - **Formatting:** Clean Markdown with headers and bullet points.
 """
 
-        # Call LLM (Gemini with fallback)
+        # Call LLM (Gemini with fallback) - with robust timeout and retry logic
         import time
         import requests
         
+        MAX_RETRIES = 3
+        TIMEOUT = 30  # Shorter timeout to fail faster
+        
         gemini_api_key = os.getenv('GEMINI_API_KEY') or os.getenv('GOOGLE_API_KEY')
         if gemini_api_key:
-            for attempt in range(2):
+            for attempt in range(MAX_RETRIES):
                 try:
                     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key={gemini_api_key}"
                     payload = {
                         "contents": [{"parts": [{"text": synthesis_prompt}]}],
                         "generationConfig": {"temperature": 0.3, "maxOutputTokens": 4000}
                     }
-                    response = requests.post(url, json=payload, timeout=90)
+                    response = requests.post(url, json=payload, timeout=TIMEOUT)
+                    
+                    # Handle rate limit with exponential backoff
                     if response.status_code == 429:
-                        time.sleep(2)
+                        wait_time = min(2 ** attempt, 10)  # Exponential backoff: 1s, 2s, 4s...
+                        logger.warning(f"Rate limited (attempt {attempt+1}/{MAX_RETRIES}), waiting {wait_time}s")
+                        time.sleep(wait_time)
                         continue
+                    
+                    # For other errors, try other providers
+                    if response.status_code >= 500:
+                        logger.warning(f"Gemini server error {response.status_code}, trying next provider")
+                        break
+                    if response.status_code == 404:
+                        logger.warning(f"Gemini 404 error, trying next provider")
+                        break
+                        
                     response.raise_for_status()
                     result = response.json()
                     synthesized = result.get("candidates", [{}])[0].get("content", {}).get("parts", [{}])[0].get("text", "")
-                    if synthesized:
+                    if synthesized and len(synthesized.strip()) > 50:  # Ensure we got meaningful content
+                        logger.info("✅ Gemini synthesis succeeded")
                         return synthesized.strip()
+                except requests.Timeout:
+                    logger.warning(f"Gemini timeout (attempt {attempt+1}/{MAX_RETRIES})")
+                    continue
                 except Exception as e:
-                    logger.error(f"Gemini synthesis failed: {e}")
-                    if attempt == 0: continue
+                    logger.warning(f"Gemini synthesis failed (attempt {attempt+1}/{MAX_RETRIES}): {e}")
+                    if attempt < MAX_RETRIES - 1:
+                        continue
                     break
 
-        # Fallback to Groq
+        # Fallback to Groq - with timeout
         groq_api_key = os.getenv('GROQ_API_KEY')
         if groq_api_key:
             try:
                 from config.llm.llm_config_sync import generate_llm_response
+                logger.info("Trying Groq fallback for synthesis")
                 synthesized = generate_llm_response(
                     prompt=synthesis_prompt,
                     system_prompt="You are a Chief Research Officer.",
                     temperature=0.3,
                     max_tokens=4000
                 )
-                if synthesized: return synthesized.strip()
+                if synthesized and len(synthesized.strip()) > 50:
+                    logger.info("✅ Groq synthesis succeeded")
+                    return synthesized.strip()
+            except requests.Timeout:
+                logger.warning("Groq timeout during synthesis")
             except Exception as e:
-                logger.error(f"Groq fallback failed: {e}")
+                logger.warning(f"Groq fallback failed: {e}")
 
-        return "Analysis generated, but executive summary synthesis failed. Please review individual agent reports."
+        # If all LLM providers fail, use constructed summary
+        logger.warning("All LLM providers exhausted for synthesis, using constructed fallback")
+        return self._construct_summary_fallback(query, {}, {}, {}, {})
+
+    def _construct_summary_fallback(
+        self,
+        query: str,
+        clinical_data: Dict[str, Any],
+        market_data: Dict[str, Any],
+        patent_data: Dict[str, Any],
+        literature_data: Dict[str, Any]
+    ) -> str:
+        """
+        Construct a professional summary when LLM synthesis fails.
+        Uses direct data extraction to build a readable executive summary.
+        """
+        try:
+            parts = []
+            parts.append(f"## Research Opportunity Analysis: {query}\n")
+            
+            # Clinical findings
+            if clinical_data and clinical_data.get('total_trials', 0) > 0:
+                trials = clinical_data.get('total_trials', 0)
+                summary = clinical_data.get('comprehensive_summary') or clinical_data.get('summary', 'Clinical trial data analyzed.')
+                parts.append(f"### Clinical Evidence\n**{trials} clinical trials analyzed:** {summary}\n")
+            
+            # Market findings
+            if market_data:
+                web_count = len(market_data.get('web_results', []))
+                rag_count = len(market_data.get('rag_results', []))
+                market_summary = market_data.get('sections', {}).get('summary', 'Market analysis complete.')
+                parts.append(f"### Market Intelligence\n**{web_count} web sources + {rag_count} internal docs:** {market_summary}\n")
+            
+            # Patent findings
+            if patent_data and patent_data.get('total_patents', 0) > 0:
+                patents = patent_data.get('total_patents', 0)
+                summary = patent_data.get('comprehensive_summary') or patent_data.get('summary', 'Patent landscape assessed.')
+                parts.append(f"### Patent Landscape\n**{patents} patents reviewed:** {summary}\n")
+            
+            # Literature findings
+            if literature_data and literature_data.get('total_publications', 0) > 0:
+                pubs = literature_data.get('total_publications', 0)
+                summary = literature_data.get('comprehensive_summary') or literature_data.get('summary', 'Literature reviewed.')
+                parts.append(f"### Scientific Literature\n**{pubs} publications reviewed:** {summary}\n")
+            
+            # Consolidated assessment
+            parts.append("### Overall Assessment\n")
+            parts.append("This analysis synthesizes evidence from multiple pharmaceutical intelligence sources to evaluate the research opportunity. ")
+            parts.append("Please review the detailed agent reports and supporting references below for comprehensive findings.\n")
+            
+            result = "\n".join(parts)
+            logger.info(f"✅ Constructed fallback summary ({len(result)} chars)")
+            return result
+        except Exception as e:
+            logger.error(f"Failed to construct summary fallback: {e}")
+            return "Analysis complete. Please review the detailed agent reports and references below."

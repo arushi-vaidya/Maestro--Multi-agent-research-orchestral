@@ -39,7 +39,7 @@ type EvidenceType = 'clinical' | 'review' | 'mechanistic' | 'market' | 'all';
 
 export const Timeline: React.FC = () => {
   // Query refresh hook
-  const { queryCount } = useQueryRefresh();
+  const { queryCount, lastQueryId, lastQueryText } = useQueryRefresh();
 
   // State
   const [timeline, setTimeline] = useState<EvidenceTimelineResponse | null>(null);
@@ -55,20 +55,21 @@ export const Timeline: React.FC = () => {
    */
   useEffect(() => {
     const fetchData = async () => {
+      const queryId = lastQueryId || undefined;
       try {
-        console.log('[Timeline] Fetching timeline data (queryCount:', queryCount, ')');
+        console.log('[Timeline] Fetching timeline data (queryCount:', queryCount, ', queryId:', queryId, ')');
         setLoading(true);
         setError(null);
         setTimeline(null);
 
         // Fetch timeline events
-        const timelineData = await api.getEvidenceTimeline(100);
+        const timelineData = await api.getEvidenceTimeline(100, undefined, undefined, queryId);
         console.log('[Timeline] Timeline data loaded:', timelineData);
         setTimeline(timelineData);
 
         // Fetch latest ROS scores (for confidence panel)
         try {
-          const ros = await api.getROSLatest();
+          const ros = await api.getROSLatest(queryId);
           setRosData(ros);
         } catch {
           console.warn('Could not fetch ROS data');
@@ -83,7 +84,14 @@ export const Timeline: React.FC = () => {
     };
 
     fetchData();
-  }, [queryCount]);
+  }, [queryCount, lastQueryId]);
+
+  const queryLabel = useMemo(() => {
+    if (lastQueryText && lastQueryText.trim()) {
+      return lastQueryText.length > 80 ? `${lastQueryText.slice(0, 77)}...` : lastQueryText;
+    }
+    return 'Most recent query';
+  }, [lastQueryText]);
 
   /**
    * Generate mock date for evidence using seeded randomness
@@ -261,6 +269,10 @@ export const Timeline: React.FC = () => {
         <p className="text-warm-text-light font-inter max-w-3xl leading-relaxed">
           Track how scientific evidence evolves over time for drug repurposing hypotheses
         </p>
+        <div className="mt-3 inline-flex items-center gap-3 px-3 py-2 rounded-lg border border-blue-100 bg-blue-50/40">
+          <span className="text-xs uppercase tracking-wide font-semibold text-blue-700">Query</span>
+          <span className="text-sm text-warm-text font-medium">{queryLabel}</span>
+        </div>
       </div>
 
       {/* FILTER BAR */}

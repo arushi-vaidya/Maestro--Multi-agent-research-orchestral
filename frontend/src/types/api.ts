@@ -154,6 +154,8 @@ export interface QueryRequest {
 }
 
 export interface QueryResponse {
+  query_id?: string;
+  query?: string;
   summary: string;
   insights: Array<{
     agent: string;

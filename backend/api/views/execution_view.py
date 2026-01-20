@@ -13,7 +13,7 @@ Endpoints:
 - GET /api/execution/status: Get execution status and timing for last query
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 from datetime import datetime
@@ -95,7 +95,7 @@ class ExecutionStatusResponse(BaseModel):
 # ==============================================================================
 
 @router.get("/status", response_model=ExecutionStatusResponse)
-def get_execution_status():
+def get_execution_status(query_id: Optional[str] = Query(None, description="Query ID to retrieve specific execution status")):
     """
     Get execution status for last query
 
@@ -133,8 +133,8 @@ def get_execution_status():
             )
 
         # Get execution metadata from cache
-        execution_metadata = cache.get_last_execution_metadata()
-        last_response = cache.get_last_response()
+        execution_metadata = cache.get_last_execution_metadata(query_id)
+        last_response = cache.get_last_response_by_id(query_id)
 
         if not execution_metadata and not last_response:
             raise HTTPException(

@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 import logging
+import uuid
 
 # Import our Master Agent
 from agents.master_agent import MasterAgent
@@ -81,6 +82,8 @@ class AgentExecutionStatus(BaseModel):
 
 class QueryResponse(BaseModel):
     # Existing fields (backward compatible)
+    query_id: Optional[str] = None  # unique id for this query execution
+    query: Optional[str] = None  # echo for UI display
     summary: str
     insights: List[Insight]
     recommendation: str
@@ -112,6 +115,9 @@ def process_query(request: QueryRequest):
         # Get Master Agent
         agent = get_master_agent()
 
+        # Generate a unique query id for downstream retrieval
+        query_id = str(uuid.uuid4())
+
         # Process query through Master Agent
         result = agent.process_query(request.query)
 
@@ -128,6 +134,7 @@ def process_query(request: QueryRequest):
         # STEP 7.6: Cache results for API façade views
         cache = get_cache()
         cache.store_query_result(
+            query_id=query_id,
             query=request.query,
             response=result,
             ros_result=ros_result,
@@ -138,6 +145,9 @@ def process_query(request: QueryRequest):
         )
         logger.info("✅ Results cached for API façade views")
 
+        # Include identifiers for frontend so it can request query-specific data
+        result["query_id"] = query_id
+        result["query"] = request.query
         return result
 
     except Exception as e:

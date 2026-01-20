@@ -132,7 +132,8 @@ def _infer_polarity_from_relationships(evidence_id: str, graph_manager) -> str:
 def get_evidence_timeline(
     limit: int = Query(100, description="Maximum events to return", ge=1, le=500),
     agent_filter: Optional[str] = Query(None, description="Filter by agent (clinical, patent, market, literature)"),
-    quality_filter: Optional[str] = Query(None, description="Filter by quality (LOW, MEDIUM, HIGH)")
+    quality_filter: Optional[str] = Query(None, description="Filter by quality (LOW, MEDIUM, HIGH)"),
+    query_id: Optional[str] = Query(None, description="Query ID (reserved for future filtering)")
 ):
     """
     Get evidence timeline for chronological visualization

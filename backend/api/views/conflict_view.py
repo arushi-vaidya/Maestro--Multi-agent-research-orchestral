@@ -13,7 +13,7 @@ Endpoints:
 - GET /api/conflicts/explanation: Get conflict explanation for last query
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from typing import Literal, Optional, List, Dict, Any
 from datetime import datetime
@@ -99,7 +99,7 @@ class ConflictExplanationResponse(BaseModel):
 # ==============================================================================
 
 @router.get("/explanation", response_model=ConflictExplanationResponse)
-def get_conflict_explanation():
+def get_conflict_explanation(query_id: Optional[str] = Query(None, description="Query ID to retrieve specific conflict analysis")):
     """
     Get conflict explanation for last queried drug-disease pair
 
@@ -133,11 +133,11 @@ def get_conflict_explanation():
             )
 
         # Get ROS result which contains conflict summary
-        ros_result = cache.get_last_ros_result()
+        ros_result = cache.get_last_ros_result(query_id)
 
         if ros_result is None:
             # Try to extract from last response
-            last_response = cache.get_last_response()
+            last_response = cache.get_last_response_by_id(query_id)
             if last_response and 'ros_results' in last_response:
                 ros_result = last_response['ros_results']
             else:

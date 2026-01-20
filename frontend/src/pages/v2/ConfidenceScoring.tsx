@@ -3,7 +3,7 @@
  * GET /api/ros/latest, /api/execution/status, /api/conflicts/explanation, /api/evidence/timeline
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { PageContainer, CalmCard, CalmBadge, CalmButton } from '../../components/calm';
 import { api } from '../../services/api';
 import { useQueryRefresh } from '../../context/QueryContext';
@@ -16,7 +16,7 @@ import type {
 import { Scale, AlertTriangle, Loader2, RefreshCw, ArrowRight } from 'lucide-react';
 
 export const ConfidenceScoring: React.FC = () => {
-  const { queryCount } = useQueryRefresh();
+  const { queryCount, lastQueryId, lastQueryText } = useQueryRefresh();
   
   const [rosData, setRosData] = useState<ROSViewResponse | null>(null);
   const [executionData, setExecutionData] = useState<ExecutionStatusResponse | null>(null); // Fetched but not currently displayed
@@ -27,8 +27,9 @@ export const ConfidenceScoring: React.FC = () => {
 
   // Fetch all required data on mount and when query changes
   useEffect(() => {
+    const queryId = lastQueryId || undefined;
     const fetchAllData = async () => {
-      console.log('[ConfidenceScoring] Fetching confidence data (queryCount:', queryCount, ')');
+      console.log('[ConfidenceScoring] Fetching confidence data (queryCount:', queryCount, ', queryId:', queryId, ')');
       setLoading(true);
       setError(null);
       
@@ -40,13 +41,13 @@ export const ConfidenceScoring: React.FC = () => {
 
       try {
         // Fetch ROS data - required, will throw if not available
-        const ros = await api.getROSLatest();
+        const ros = await api.getROSLatest(queryId);
         console.log('[ConfidenceScoring] ROS data loaded:', ros);
         setRosData(ros);
 
         // Fetch execution status - optional
         try {
-          const exec = await api.getExecutionStatus();
+          const exec = await api.getExecutionStatus(queryId);
           console.log('[ConfidenceScoring] Execution data loaded:', exec);
           setExecutionData(exec);
         } catch (err) {
@@ -56,7 +57,7 @@ export const ConfidenceScoring: React.FC = () => {
 
         // Fetch conflict data - optional
         try {
-          const conflict = await api.getConflictExplanation();
+          const conflict = await api.getConflictExplanation(queryId);
           console.log('[ConfidenceScoring] Conflict data loaded:', conflict);
           setConflictData(conflict);
         } catch (err) {
@@ -66,7 +67,7 @@ export const ConfidenceScoring: React.FC = () => {
 
         // Fetch evidence timeline - optional
         try {
-          const evidence = await api.getEvidenceTimeline(100);
+          const evidence = await api.getEvidenceTimeline(100, undefined, undefined, queryId);
           console.log('[ConfidenceScoring] Evidence timeline loaded:', evidence);
           setEvidenceData(evidence);
         } catch (err) {
@@ -83,7 +84,14 @@ export const ConfidenceScoring: React.FC = () => {
     };
 
     fetchAllData();
-  }, [queryCount]);
+  }, [queryCount, lastQueryId]);
+
+  const queryLabel = useMemo(() => {
+    if (lastQueryText && lastQueryText.trim()) {
+      return lastQueryText.length > 80 ? `${lastQueryText.slice(0, 77)}...` : lastQueryText;
+    }
+    return 'Most recent query';
+  }, [lastQueryText]);
 
   // Calculate score factors from ROS breakdown
   const getScoreFactors = () => {
@@ -236,6 +244,10 @@ export const ConfidenceScoring: React.FC = () => {
 
       {/* Current Query Info */}
       <CalmCard className="mb-8">
+        <div className="flex items-center gap-3 text-sm mb-2">
+          <span className="px-2 py-1 rounded-md bg-orange-50 text-orange-700 border border-orange-100 font-medium">Query</span>
+          <span className="font-medium text-warm-text">{queryLabel}</span>
+        </div>
         <div className="flex items-center gap-2 text-sm">
           <span className="text-warm-text-light">Current Analysis:</span>
           <span className="font-medium text-warm-text">{rosData?.drug}</span>

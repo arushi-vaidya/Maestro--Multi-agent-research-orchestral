@@ -43,7 +43,7 @@ interface ReasoningPath {
 
 export const GraphExplorer: React.FC = () => {
   // Query refresh hook
-  const { queryCount } = useQueryRefresh();
+  const { queryCount, lastQueryId, lastQueryText } = useQueryRefresh();
 
   // State
   const [graphData, setGraphData] = useState<GraphSummaryResponse | null>(null);
@@ -57,14 +57,15 @@ export const GraphExplorer: React.FC = () => {
   useEffect(() => {
     const loadGraphData = async () => {
       try {
-        console.log('[GraphExplorer] Fetching graph data (queryCount:', queryCount, ')');
+        const queryId = lastQueryId || undefined;
+        console.log('[GraphExplorer] Fetching graph data (queryCount:', queryCount, ', queryId:', queryId, ')');
         setLoading(true);
         setError(null);
         setGraphData(null); // Clear old data
         // CRITICAL: Request evidence nodes (true) to enable Drug → Evidence → Disease paths
         // Without evidence nodes, backend only returns direct Drug → Disease edges
         // which are blocked by scientific filter, resulting in zero edges
-        const data = await api.getGraphSummary(100, true);
+        const data = await api.getGraphSummary(100, true, queryId);
         console.log('[GraphExplorer] Graph data loaded:', data);
         setGraphData(data);
       } catch (err: any) {
@@ -80,7 +81,14 @@ export const GraphExplorer: React.FC = () => {
     };
 
     loadGraphData();
-  }, [queryCount]);
+  }, [queryCount, lastQueryId]);
+
+  const queryLabel = useMemo(() => {
+    if (lastQueryText && lastQueryText.trim()) {
+      return lastQueryText.length > 80 ? `${lastQueryText.slice(0, 77)}...` : lastQueryText;
+    }
+    return 'Most recent query';
+  }, [lastQueryText]);
 
   // ========================================================================
   // SCIENTIFIC CORRECTION: Data transformation layer
@@ -691,6 +699,10 @@ export const GraphExplorer: React.FC = () => {
             <p className="text-slate-600">
               Navigate mechanistic reasoning paths through the biomedical knowledge graph
             </p>
+            <div className="mt-3 inline-flex items-center gap-3 px-3 py-2 rounded-lg border border-emerald-100 bg-emerald-50/60">
+              <span className="text-xs uppercase tracking-wide font-semibold text-emerald-700">Query</span>
+              <span className="text-sm text-slate-800 font-medium">{queryLabel}</span>
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" className="border-slate-200" onClick={handleExport}>

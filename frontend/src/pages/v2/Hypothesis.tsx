@@ -56,6 +56,7 @@ export const Hypothesis: React.FC = () => {
   const [executionData, setExecutionData] = useState<ExecutionStatusResponse | null>(null);
   const [rosData, setRosData] = useState<ROSViewResponse | null>(null);
   const [queryData, setQueryData] = useState<QueryResponse | null>(null);
+  const [currentQueryId, setCurrentQueryId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   
   // Polling ref to stop polling when complete
@@ -83,9 +84,11 @@ export const Hypothesis: React.FC = () => {
       // We start polling in parallel in useEffect
       const response = await api.submitQuery(query);
       setQueryData(response);
+      const queryId = response.query_id || 'latest';
+      setCurrentQueryId(response.query_id || null);
 
       // Once POST returns, we assume completion
-      await handleCompletion();
+      await handleCompletion(queryId, query);
       
     } catch (err: any) {
       console.error('Analysis failed:', err);
@@ -96,12 +99,12 @@ export const Hypothesis: React.FC = () => {
     }
   };
 
-  const handleCompletion = async () => {
+  const handleCompletion = async (queryId: string, queryText: string) => {
     try {
       // Fetch final states
       const [finalExecution, finalRos] = await Promise.all([
-        api.getExecutionStatus(),
-        api.getROSLatest()
+        api.getExecutionStatus(queryId),
+        api.getROSLatest(queryId)
       ]);
 
       setExecutionData(finalExecution);
@@ -110,7 +113,7 @@ export const Hypothesis: React.FC = () => {
       
       // Notify all pages that a new query has been completed
       console.log('[Hypothesis] Query completed, notifying pages...');
-      notifyQuerySubmitted();
+      notifyQuerySubmitted(queryId, queryText);
     } catch (err) {
       console.error('Failed to fetch results:', err);
       // Fallback: stay in executing or show partial error? 
@@ -126,7 +129,7 @@ export const Hypothesis: React.FC = () => {
     if (consoleState === 'EXECUTING') {
       const poll = async () => {
         try {
-          const status = await api.getExecutionStatus();
+          const status = await api.getExecutionStatus(currentQueryId || undefined);
           // Verify this status belongs to CURRENT query (by checking timestamp or active agents)
           // Since we can't easily check ID, we just display what we get.
           // If the backend is blocking, this might timeout or return old data.
@@ -148,7 +151,7 @@ export const Hypothesis: React.FC = () => {
         clearInterval(pollIntervalRef.current);
       }
     };
-  }, [consoleState]);
+  }, [consoleState, currentQueryId]);
 
   // --- RENDER HELPERS ---
 
@@ -202,11 +205,11 @@ export const Hypothesis: React.FC = () => {
       </div>
 
       {/* 2. INPUT PANEL */}
-      <CalmCard className={`mb-8 transition-opacity duration-500 border-2 border-blue-100 bg-blue-50/20 ${consoleState === 'COMPLETED' ? 'opacity-75' : 'opacity-100'}`}>
+      <CalmCard className={`mb-8 transition-opacity duration-500 border-2 border-orange-100 bg-orange-50/20 ${consoleState === 'COMPLETED' ? 'opacity-75' : 'opacity-100'}`}>
         <div className="mb-4">
            <div className="flex items-center gap-2 mb-2">
-             <div className="w-2 h-2 rounded-full bg-blue-500" />
-             <label className="block text-xs font-semibold text-blue-900 uppercase tracking-wider font-inter">
+             <div className="w-2 h-2 rounded-full bg-orange-500" />
+             <label className="block text-xs font-semibold text-orange-900 uppercase tracking-wider font-inter">
                Research Hypothesis
              </label>
            </div>
@@ -219,6 +222,7 @@ export const Hypothesis: React.FC = () => {
                  setRosData(null);
                  setConsoleState('IDLE');
                }
+                setCurrentQueryId(null);
                setQuery(val);
              }}
              placeholder="e.g. Semaglutide for Alzheimer's disease"

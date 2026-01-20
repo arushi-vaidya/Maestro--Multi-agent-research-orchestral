@@ -161,6 +161,7 @@ def setup_cache():
 
     # Populate cache
     cache.store_query_result(
+        query_id="test-query-id",
         query="Test query for drug-disease analysis",
         response=mock_response,
         ros_result=mock_response["ros_results"],
