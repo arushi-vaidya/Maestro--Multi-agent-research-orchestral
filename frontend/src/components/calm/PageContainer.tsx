@@ -2,7 +2,7 @@ import React from 'react';
 
 interface PageContainerProps {
   children: React.ReactNode;
-  maxWidth?: 'sm' | 'md' | 'lg' | 'xl' | 'full';
+  maxWidth?: 'sm' | 'md' | 'lg' | 'xl' | '7xl' | 'full';
   className?: string;
 }
 
@@ -16,6 +16,7 @@ export const PageContainer: React.FC<PageContainerProps> = ({
     md: 'max-w-4xl',
     lg: 'max-w-6xl',
     xl: 'max-w-7xl',
+    '7xl': 'max-w-7xl',
     full: 'max-w-full',
   };
 
