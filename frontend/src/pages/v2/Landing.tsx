@@ -111,16 +111,7 @@ export const Landing: React.FC = () => {
           </div>
         </div>
 
-        {/* Agent Architecture with premium card design */}
-        <div className="mb-32">
-          <div className="text-center mb-12">
-            <h2 className="text-4xl font-extrabold text-slate-900 mb-4 font-inter">
-              Multi-Agent Architecture
-            </h2>
-            <p className="text-lg text-slate-600 font-inter max-w-2xl mx-auto">
-              Four specialized agents orchestrated by a master coordinator for comprehensive pharmaceutical intelligence.
-            </p>
-          </div>clean professional cards */}
+        {/* Agent Architecture with clean professional cards */}
         <div className="mb-32">
           <div className="text-center mb-12">
             <h2 className="text-4xl font-extrabold text-slate-900 mb-4 font-inter">
@@ -187,4 +178,11 @@ export const Landing: React.FC = () => {
           <p className="text-base font-bold text-slate-800 font-inter mb-2">
             MAESTRO Research Platform
           </p>
-          <p className="text-sm text-slate-500 font-inter
+          <p className="text-sm text-slate-500 font-inter">
+            Multi-Agent Orchestration with AKGP and ROS
+          </p>
+        </footer>
+      </PageContainer>
+    </div>
+  );
+};
