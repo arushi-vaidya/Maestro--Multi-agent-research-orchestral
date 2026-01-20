@@ -10,3 +10,4 @@ export { GraphExplorer } from './GraphExplorer';
 export { Timeline } from './Timeline';
 export { Conflicts } from './Conflicts';
 export { Execution } from './Execution';
+export { ConfidenceScoring } from './ConfidenceScoring';
