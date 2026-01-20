@@ -15,11 +15,12 @@ import {
   CalmInput,
   CalmButton,
   CalmBadge,
-  ROSResultCard
+  ROSResultCard,
+  ReferencesPanel
 } from '../../components/calm';
 import { api } from '../../services/api';
 import { useQueryRefresh } from '../../context/QueryContext';
-import type { ROSViewResponse, ExecutionStatusResponse } from '../../types/api';
+import type { ROSViewResponse, ExecutionStatusResponse, QueryResponse } from '../../types/api';
 import { 
   Sparkles, 
   Activity, 
@@ -54,6 +55,7 @@ export const Hypothesis: React.FC = () => {
   const [query, setQuery] = useState('');
   const [executionData, setExecutionData] = useState<ExecutionStatusResponse | null>(null);
   const [rosData, setRosData] = useState<ROSViewResponse | null>(null);
+  const [queryData, setQueryData] = useState<QueryResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   
   // Polling ref to stop polling when complete
@@ -68,8 +70,9 @@ export const Hypothesis: React.FC = () => {
     // Clear ALL previous query data first
     setConsoleState('SUBMITTING');
     setError(null);
-    setExecutionData(null); // Clear old execution
-    setRosData(null); // Clear old ROS results
+    setExecutionData(null);
+    setRosData(null);
+    setQueryData(null);
 
     try {
       // Start the heavy job
@@ -78,7 +81,8 @@ export const Hypothesis: React.FC = () => {
       
       // Fire the POST request (Blocking)
       // We start polling in parallel in useEffect
-      await api.submitQuery(query);
+      const response = await api.submitQuery(query);
+      setQueryData(response);
 
       // Once POST returns, we assume completion
       await handleCompletion();
@@ -328,25 +332,83 @@ export const Hypothesis: React.FC = () => {
 
           <ROSResultCard rosData={rosData} />
 
-          {/* 5. EXPLANATION PANEL */}
+          {/* 5. ENHANCED EXECUTIVE SUMMARY PANEL */}
           <div className="grid md:grid-cols-3 gap-6">
             <div className="md:col-span-2">
                <h3 className="text-xs font-semibold text-warm-text-subtle uppercase tracking-wider mb-3 font-inter">
                  Executive Summary
                </h3>
                <CalmCard className="h-full">
-                 <p className="text-sm text-warm-text leading-relaxed font-inter">
-                   {/* Fallback explanation if API doesn't provide one directly in this view, 
-                       though ROSResultCard usually handles it. We render the breakdown text here if needed 
-                       or a placeholder for specific abstract-like text if the user wants strictly separate.
-                       Given ROSResultCard has explanation, we might be duplicating. 
-                       Let's check the constraint: "Explanation Panel ... Plain-language explanation from API"
-                       The ROS endpoint returns `explanation`. ROSResultCard displays it.
-                       I will suppress this separate card if ROSResultCard covers it, 
-                       OR show the `conflict_penalty` explanation here if it's interesting.
-                   */}
-                   {rosData.explanation || "No summary available."}
-                 </p>
+                 <div className="space-y-4">
+                   {/* Main Finding */}
+                   <div>
+                     <p className="text-xs font-semibold text-warm-text-subtle uppercase tracking-wide mb-2 font-inter">Research Opportunity</p>
+                     <p className="text-sm text-warm-text leading-relaxed font-inter">
+                       {rosData.explanation || "No summary available."}
+                     </p>
+                   </div>
+
+                   {/* Agent Contributions */}
+                   {executionData && executionData.agent_details && executionData.agent_details.length > 0 && (
+                     <div>
+                       <p className="text-xs font-semibold text-warm-text-subtle uppercase tracking-wide mb-2 font-inter">Agent Analysis Breakdown</p>
+                       <div className="space-y-2">
+                         {executionData.agent_details.map((detail) => {
+                           const agentLabel = AGENTS.find(a => a.id === detail.agent_id)?.label || detail.agent_id;
+                           return (
+                             <div key={detail.agent_id} className="flex items-start gap-3 p-2 bg-warm-bg-alt rounded border border-warm-divider">
+                               <div className="flex-1">
+                                 <p className="text-xs font-medium text-warm-text font-inter capitalize">{agentLabel}</p>
+                                 <p className="text-xs text-warm-text-light font-inter mt-0.5">
+                                   {detail.status === 'completed' 
+                                     ? `${detail.result_count || 0} results • ${detail.duration_ms ? (detail.duration_ms / 1000).toFixed(1) + 's' : 'N/A'}`
+                                     : detail.status === 'failed'
+                                     ? `Failed: ${detail.error || 'Unknown error'}`
+                                     : 'Pending'}
+                                 </p>
+                               </div>
+                             </div>
+                           );
+                         })}
+                       </div>
+                     </div>
+                   )}
+
+                   {/* Evidence Summary */}
+                   {rosData.metadata && (
+                     <div>
+                       <p className="text-xs font-semibold text-warm-text-subtle uppercase tracking-wide mb-2 font-inter">Evidence Summary</p>
+                       <div className="grid grid-cols-3 gap-2 text-xs">
+                         <div className="p-2 bg-sage-50 border border-sage-100 rounded">
+                           <p className="text-sage-700 font-semibold">{rosData.metadata.num_supporting_evidence || 0}</p>
+                           <p className="text-sage-600 text-xs">Supporting</p>
+                         </div>
+                         <div className="p-2 bg-amber-50 border border-amber-100 rounded">
+                           <p className="text-amber-700 font-semibold">{rosData.metadata.num_suggesting_evidence || 0}</p>
+                           <p className="text-amber-600 text-xs">Suggesting</p>
+                         </div>
+                         <div className="p-2 bg-rose-50 border border-rose-100 rounded">
+                           <p className="text-rose-700 font-semibold">{rosData.metadata.num_contradicting_evidence || 0}</p>
+                           <p className="text-rose-600 text-xs">Contradicting</p>
+                         </div>
+                       </div>
+                     </div>
+                   )}
+
+                   {/* Distinct Sources */}
+                   {rosData.metadata?.distinct_agents && rosData.metadata.distinct_agents.length > 0 && (
+                     <div>
+                       <p className="text-xs font-semibold text-warm-text-subtle uppercase tracking-wide mb-2 font-inter">Data Sources</p>
+                       <div className="flex flex-wrap gap-1">
+                         {rosData.metadata.distinct_agents.map((agent) => (
+                           <span key={agent} className="px-2 py-1 bg-warm-bg-alt border border-warm-divider rounded text-xs text-warm-text font-inter capitalize">
+                             {agent}
+                           </span>
+                         ))}
+                       </div>
+                     </div>
+                   )}
+                 </div>
                </CalmCard>
             </div>
             
@@ -383,6 +445,19 @@ export const Hypothesis: React.FC = () => {
                </div>
             </div>
           </div>
+
+          {/* 7. REFERENCES SECTION */}
+          {queryData?.references && queryData.references.length > 0 && (
+            <div className="animate-calm-fade-in">
+              <h3 className="text-xs font-semibold text-warm-text-subtle uppercase tracking-wider mb-4 font-inter">
+                Supporting Research
+              </h3>
+              <ReferencesPanel 
+                references={queryData.references}
+                rosMetadata={rosData?.metadata}
+              />
+            </div>
+          )}
           
           {/* Final Status Banner */}
           <div className="flex justify-center pt-8 pb-12">

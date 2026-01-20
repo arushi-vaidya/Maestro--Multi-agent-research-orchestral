@@ -25,3 +25,4 @@ export { TimelineChart } from './TimelineChart';
 export { TimelineEventCard } from './TimelineEventCard';
 export { TimelineRangeSelector } from './TimelineRangeSelector';
 export { ROSResultCard } from './ROSResultCard';
+export { default as ReferencesPanel } from './ReferencesPanel';

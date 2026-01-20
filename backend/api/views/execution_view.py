@@ -115,11 +115,21 @@ def get_execution_status():
     try:
         cache = get_cache()
 
-        # Check if cache has data
+        # If no execution yet, return an empty-but-valid payload so UI doesn't spam 404s
         if cache.is_empty():
-            raise HTTPException(
-                status_code=404,
-                detail="No execution data available. Execute a query via POST /api/query first."
+            return ExecutionStatusResponse(
+                agents_triggered=[],
+                agents_completed=[],
+                agents_failed=[],
+                agent_details=[],
+                ingestion_summary={
+                    "total_evidence": 0,
+                    "ingested_evidence": 0,
+                    "rejected_evidence": 0,
+                },
+                execution_time_ms=0,
+                query_timestamp=datetime.utcnow().isoformat(),
+                metadata={"message": "No execution data available yet"},
             )
 
         # Get execution metadata from cache
