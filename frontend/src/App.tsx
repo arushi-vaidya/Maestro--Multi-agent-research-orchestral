@@ -14,6 +14,8 @@ import {
   Conflicts,
   Execution,
 } from './pages/v2';
+// Query context for cross-page state management
+import { QueryProvider } from './context/QueryContext';
 import './App.css';
 
 const AppContent: React.FC = () => {
@@ -43,9 +45,11 @@ const AppContent: React.FC = () => {
 
 const App: React.FC = () => {
   return (
-    <Router>
-      <AppContent />
-    </Router>
+    <QueryProvider>
+      <Router>
+        <AppContent />
+      </Router>
+    </QueryProvider>
   );
 };
 

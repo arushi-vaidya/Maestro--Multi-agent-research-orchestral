@@ -14,6 +14,7 @@ import { Button } from '../../components/ui/button';
 import { Input } from '../../components/ui/input';
 import { Search, ZoomIn, ZoomOut, Maximize2, Download, ChevronRight, ExternalLink } from 'lucide-react';
 import { api } from '../../services/api';
+import { useQueryRefresh } from '../../context/QueryContext';
 import type { GraphSummaryResponse } from '../../types/api';
 
 // Transform backend node to component format
@@ -41,6 +42,9 @@ interface ReasoningPath {
 }
 
 export const GraphExplorer: React.FC = () => {
+  // Query refresh hook
+  const { queryCount } = useQueryRefresh();
+
   // State
   const [graphData, setGraphData] = useState<GraphSummaryResponse | null>(null);
   const [selectedNode, setSelectedNode] = useState<GraphNodeData | null>(null);
@@ -53,12 +57,15 @@ export const GraphExplorer: React.FC = () => {
   useEffect(() => {
     const loadGraphData = async () => {
       try {
+        console.log('[GraphExplorer] Fetching graph data (queryCount:', queryCount, ')');
         setLoading(true);
         setError(null);
+        setGraphData(null); // Clear old data
         // CRITICAL: Request evidence nodes (true) to enable Drug → Evidence → Disease paths
         // Without evidence nodes, backend only returns direct Drug → Disease edges
         // which are blocked by scientific filter, resulting in zero edges
         const data = await api.getGraphSummary(100, true);
+        console.log('[GraphExplorer] Graph data loaded:', data);
         setGraphData(data);
       } catch (err: any) {
         console.error('Failed to load graph data:', err);
@@ -73,7 +80,7 @@ export const GraphExplorer: React.FC = () => {
     };
 
     loadGraphData();
-  }, []);
+  }, [queryCount]);
 
   // ========================================================================
   // SCIENTIFIC CORRECTION: Data transformation layer

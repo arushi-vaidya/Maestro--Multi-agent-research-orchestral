@@ -258,7 +258,9 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({
 
       if (nodes.length > 0) {
         setTimeout(() => {
-          graphRef.current.zoomToFit(400, 50);
+          if (graphRef.current && graphRef.current.zoomToFit) {
+            graphRef.current.zoomToFit(400, 50);
+          }
         }, 500); // Wait for simulation to settle a bit
       }
     }
@@ -280,7 +282,11 @@ const GraphVisualization: React.FC<GraphVisualizationProps> = ({
         cooldownTicks={100}
         d3AlphaDecay={0.02} // Slower decay for better settling
         d3VelocityDecay={0.3}
-        onEngineStop={() => graphRef.current?.zoomToFit(400, 50)}
+        onEngineStop={() => {
+          if (graphRef.current && graphRef.current.zoomToFit) {
+            graphRef.current.zoomToFit(400, 50);
+          }
+        }}
         backgroundColor="#F8FAFC"
         linkColor={() => '#CBD5E1'}
       />

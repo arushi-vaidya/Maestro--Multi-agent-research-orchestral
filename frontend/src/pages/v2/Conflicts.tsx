@@ -6,14 +6,25 @@
 import React, { useEffect, useState } from 'react';
 import { PageContainer, CalmCard, CalmBadge } from '../../components/calm';
 import { api } from '../../services/api';
+import { useQueryRefresh } from '../../context/QueryContext';
 import type { ConflictExplanationResponse } from '../../types/api';
 
 export const Conflicts: React.FC = () => {
+  // Query refresh hook
+  const { queryCount } = useQueryRefresh();
+
   const [conflicts, setConflicts] = useState<ConflictExplanationResponse | null>(null);
 
   useEffect(() => {
-    api.getConflictExplanation().then(setConflicts).catch(console.error);
-  }, []);
+    console.log('[Conflicts] Fetching conflicts data (queryCount:', queryCount, ')');
+    setConflicts(null); // Clear old data
+    api.getConflictExplanation()
+      .then((data) => {
+        console.log('[Conflicts] Conflicts data loaded:', data);
+        setConflicts(data);
+      })
+      .catch(console.error);
+  }, [queryCount]);
 
   const severityVariant = (severity: string) => {
     if (severity === 'HIGH') return 'warning';
