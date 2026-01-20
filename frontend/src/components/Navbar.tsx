@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Activity, FileText, Network, Clock, AlertTriangle, PlayCircle, Target } from 'lucide-react';
+import { Activity, FileText, Network, Clock, Target } from 'lucide-react';
 
 const Navbar: React.FC = () => {
   const location = useLocation();
@@ -10,8 +10,6 @@ const Navbar: React.FC = () => {
     { path: '/hypothesis', label: 'Research', icon: Activity },
     { path: '/graph', label: 'Graph', icon: Network },
     { path: '/timeline', label: 'Timeline', icon: Clock },
-    { path: '/conflicts', label: 'Conflicts', icon: AlertTriangle },
-    { path: '/execution', label: 'Execution', icon: PlayCircle },
     { path: '/confidence', label: 'Confidence', icon: Target },
   ];
 
