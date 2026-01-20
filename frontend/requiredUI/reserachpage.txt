@@ -1,0 +1,251 @@
+import React, { useState } from 'react';
+import NavigationHeader from '@/components/pharmagraph/NavigationHeader';
+import HypothesisCard from '@/components/pharmagraph/HypothesisCard';
+import ReasoningStep from '@/components/pharmagraph/ReasoningStep';
+import ConfidenceScore from '@/components/pharmagraph/ConfidenceScore';
+import EvidenceStrengthIndicator from '@/components/pharmagraph/EvidenceStrengthIndicator';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Search, Filter, ArrowRight, ExternalLink, AlertTriangle } from 'lucide-react';
+
+const sampleHypotheses = [
+  {
+    id: 'H-2024-0847',
+    drug: 'Metformin',
+    indication: 'Glioblastoma',
+    mechanism: 'AMPK activation leading to mTOR pathway inhibition and reduced tumor cell proliferation',
+    confidence: 72,
+    evidenceLevel: 'moderate',
+    evidenceCount: 34,
+    methodologies: ['clinical_trial', 'in_vitro']
+  },
+  {
+    id: 'H-2024-0912',
+    drug: 'Propranolol',
+    indication: 'Angiosarcoma',
+    mechanism: 'Beta-adrenergic blockade inhibiting VEGF expression and angiogenesis',
+    confidence: 68,
+    evidenceLevel: 'moderate',
+    evidenceCount: 18,
+    methodologies: ['case_study', 'in_vivo']
+  },
+  {
+    id: 'H-2024-1103',
+    drug: 'Thalidomide',
+    indication: 'Kaposi Sarcoma',
+    mechanism: 'Anti-angiogenic effects via TNF-α inhibition and immunomodulation',
+    confidence: 81,
+    evidenceLevel: 'high',
+    evidenceCount: 56,
+    methodologies: ['clinical_trial', 'meta_analysis']
+  },
+  {
+    id: 'H-2024-1245',
+    drug: 'Simvastatin',
+    indication: 'Multiple Sclerosis',
+    mechanism: 'HMG-CoA reductase inhibition modulating immune cell function and neuroprotection',
+    confidence: 45,
+    evidenceLevel: 'emerging',
+    evidenceCount: 12,
+    methodologies: ['computational', 'in_vitro']
+  }
+];
+
+const sampleReasoningPath = [
+  {
+    order: 1,
+    entity: 'Metformin',
+    relation: 'ACTIVATES',
+    sourceType: 'molecular',
+    description: 'Metformin activates AMP-activated protein kinase (AMPK) through inhibition of mitochondrial complex I.',
+    sources: [
+      { id: 'PMID:16731850', methodology: 'in_vitro' },
+      { id: 'DrugBank:DB00331' }
+    ]
+  },
+  {
+    order: 2,
+    entity: 'AMPK Pathway',
+    relation: 'INHIBITS',
+    sourceType: 'database',
+    description: 'Activated AMPK inhibits the mTORC1 signaling complex through phosphorylation of TSC2 and Raptor.',
+    sources: [
+      { id: 'Reactome:R-HSA-380972' },
+      { id: 'PMID:17580304', methodology: 'review' }
+    ]
+  },
+  {
+    order: 3,
+    entity: 'mTOR Signaling',
+    relation: 'REGULATES',
+    sourceType: 'literature',
+    description: 'mTOR pathway hyperactivation is observed in >80% of glioblastoma cases and drives cell proliferation.',
+    sources: [
+      { id: 'PMID:25792707', methodology: 'meta_analysis' },
+      { id: 'TCGA-GBM' }
+    ]
+  },
+  {
+    order: 4,
+    entity: 'Glioblastoma Proliferation',
+    relation: 'OUTCOME',
+    sourceType: 'experimental',
+    description: 'Phase II trials show modest survival benefit in combination with temozolomide (HR: 0.82, 95% CI: 0.68-0.99).',
+    sources: [
+      { id: 'NCT02149459', methodology: 'clinical_trial' },
+      { id: 'PMID:31040227', methodology: 'clinical_trial' }
+    ]
+  }
+];
+
+export default function ResearchConsole() {
+  const [selectedHypothesis, setSelectedHypothesis] = useState(sampleHypotheses[0]);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  return (
+    <div className="min-h-screen bg-[#FAFAFA]">
+      <NavigationHeader currentPage="ResearchConsole" />
+      
+      <div className="max-w-7xl mx-auto px-6 py-8">
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="text-2xl font-semibold text-slate-900 mb-2">
+            Research Console
+          </h1>
+          <p className="text-slate-600">
+            Explore and validate drug repurposing hypotheses with structured reasoning
+          </p>
+        </div>
+
+        {/* Search and Filters */}
+        <div className="flex items-center gap-4 mb-8">
+          <div className="relative flex-1 max-w-xl">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <Input
+              type="text"
+              placeholder="Search by drug, indication, or mechanism..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="pl-10 bg-white border-slate-200"
+            />
+          </div>
+          <Button variant="outline" className="border-slate-200 text-slate-600">
+            <Filter className="w-4 h-4 mr-2" />
+            Filters
+          </Button>
+        </div>
+
+        {/* Main Content */}
+        <div className="grid lg:grid-cols-12 gap-8">
+          {/* Hypothesis List */}
+          <div className="lg:col-span-4 space-y-4">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-sm font-medium text-slate-500 uppercase tracking-wider">
+                Active Hypotheses
+              </h2>
+              <span className="text-sm text-slate-500">
+                {sampleHypotheses.length} results
+              </span>
+            </div>
+            {sampleHypotheses.map((hypothesis) => (
+              <HypothesisCard
+                key={hypothesis.id}
+                hypothesis={hypothesis}
+                isSelected={selectedHypothesis?.id === hypothesis.id}
+                onClick={() => setSelectedHypothesis(hypothesis)}
+              />
+            ))}
+          </div>
+
+          {/* Reasoning Panel */}
+          <div className="lg:col-span-8">
+            {selectedHypothesis && (
+              <div className="bg-white border border-slate-200 rounded-lg">
+                {/* Hypothesis Header */}
+                <div className="p-6 border-b border-slate-200">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-xs font-mono text-slate-400">
+                          {selectedHypothesis.id}
+                        </span>
+                        <span className="text-slate-300">•</span>
+                        <EvidenceStrengthIndicator 
+                          level={selectedHypothesis.evidenceLevel} 
+                        />
+                      </div>
+                      <h2 className="text-xl font-semibold text-slate-900 mb-1">
+                        {selectedHypothesis.drug} 
+                        <ArrowRight className="inline w-5 h-5 mx-2 text-slate-400" />
+                        {selectedHypothesis.indication}
+                      </h2>
+                      <p className="text-slate-600">
+                        {selectedHypothesis.mechanism}
+                      </p>
+                    </div>
+                    <ConfidenceScore score={selectedHypothesis.confidence} />
+                  </div>
+                </div>
+
+                {/* Reasoning Path */}
+                <div className="p-6 border-b border-slate-200">
+                  <h3 className="text-sm font-medium text-slate-500 uppercase tracking-wider mb-6">
+                    Mechanistic Reasoning Path
+                  </h3>
+                  <div className="pl-2">
+                    {sampleReasoningPath.map((step, index) => (
+                      <ReasoningStep
+                        key={step.order}
+                        step={step}
+                        isLast={index === sampleReasoningPath.length - 1}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                {/* Caveats and Conflicts */}
+                <div className="p-6 bg-amber-50/50 border-b border-slate-200">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className="w-5 h-5 text-amber-600 mt-0.5" />
+                    <div>
+                      <h4 className="font-medium text-slate-900 mb-1">
+                        Conflicting Evidence
+                      </h4>
+                      <p className="text-sm text-slate-600 mb-2">
+                        Two Phase III trials (NCT02780024, NCT03243851) showed no significant 
+                        survival benefit as monotherapy. Current evidence supports combination 
+                        therapy contexts only.
+                      </p>
+                      <a 
+                        href="#" 
+                        className="text-sm font-medium text-slate-700 hover:text-slate-900 inline-flex items-center"
+                      >
+                        View full conflict analysis
+                        <ExternalLink className="w-3 h-3 ml-1" />
+                      </a>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Actions */}
+                <div className="p-6 flex items-center justify-between">
+                  <Button variant="outline" className="text-slate-600 border-slate-200">
+                    Export Reasoning Chain
+                  </Button>
+                  <div className="flex items-center gap-3">
+                    <Button variant="outline" className="text-slate-600 border-slate-200">
+                      View Evidence Timeline
+                    </Button>
+                    <Button className="bg-slate-900 hover:bg-slate-800 text-white">
+                      Explore in Knowledge Graph
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
