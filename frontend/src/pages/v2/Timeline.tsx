@@ -1,88 +1,139 @@
 /**
- * Evidence Timeline
- * 
- * Academic visualization of evidence evolution over time.
- * Two-column layout: Confidence summary (left) + Chronological evidence (right)
- * 
- * Data contract: GET /api/evidence/timeline only
- * No backend changes, no inferred data, no fake timestamps.
- * 
- * Design: Like a Nature Systems paper figure.
+ * Evidence Timeline - Redesigned
+ *
+ * STEP 8: Frontend Research Dashboard - Evidence Timeline
+ *
+ * Purpose:
+ * Present evidence evolution over time for a selected Drug → Disease relationship.
+ * Shows confidence score evolution, polarity tracking, and chronological organization.
+ *
+ * Layout:
+ * - Top: Page header and filter bar
+ * - Left: Confidence summary panel
+ * - Right: Vertical chronological timeline
+ *
+ * Data Sources (READ-ONLY):
+ * - GET /api/evidence/timeline (main evidence events)
+ * - GET /api/ros/latest (confidence scores)
+ *
+ * Design Philosophy:
+ * "A calm scientific ledger showing how belief evolves over time."
+ * Warm minimal palette, professional, trustworthy, not flashy.
  */
 
 import React, { useEffect, useState } from 'react';
-import { PageContainer, CalmCard, ConfidenceEvolutionCard } from '../../components/calm';
+import { PageContainer, CalmCard } from '../../components/calm';
 import { TimelineRangeSelector } from '../../components/calm/TimelineRangeSelector';
-import { TimelineEventCard } from '../../components/calm/TimelineEventCard';
+import { EvidenceTimelineCard } from '../../components/calm/EvidenceTimelineCard';
+import { ConfidenceSummaryCard } from '../../components/calm/ConfidenceSummaryCard';
 import { api } from '../../services/api';
-import type { EvidenceTimelineResponse, EvidenceTimelineEvent } from '../../types/api';
+import type { EvidenceTimelineResponse, EvidenceTimelineEvent, ROSViewResponse } from '../../types/api';
 
+/**
+ * Timeline.tsx - Main Evidence Timeline Page
+ *
+ * Responsibilities:
+ * 1. Fetch evidence timeline from backend
+ * 2. Fetch ROS confidence scores
+ * 3. Filter by time range
+ * 4. Render left summary panel + right timeline
+ * 5. Handle interactions (expand events, change filters)
+ *
+ * All data comes from backend - no mock data, no inference.
+ */
 export const Timeline: React.FC = () => {
+  // State management
   const [timeline, setTimeline] = useState<EvidenceTimelineResponse | null>(null);
+  const [rosData, setRosData] = useState<ROSViewResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [timeRange, setTimeRange] = useState<'6m' | '1y' | '2y' | '5y' | 'all'>('all');
   const [expandedIndices, setExpandedIndices] = useState<Set<number>>(new Set());
 
+  /**
+   * Effect: Load timeline and ROS data on mount
+   */
   useEffect(() => {
-    const fetchTimeline = async () => {
+    const fetchData = async () => {
       try {
         setLoading(true);
-        const data = await api.getEvidenceTimeline(100);
-        setTimeline(data);
         setError(null);
+
+        // Fetch timeline events
+        const timelineData = await api.getEvidenceTimeline(100);
+        setTimeline(timelineData);
+
+        // Fetch latest ROS scores (for confidence panel)
+        try {
+          const ros = await api.getROSLatest();
+          setRosData(ros);
+        } catch {
+          // ROS data is optional - timeline can still render
+          console.warn('Could not fetch ROS data');
+        }
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load timeline');
+        const message = err instanceof Error ? err.message : 'Failed to load evidence timeline';
+        setError(message);
         console.error('Timeline fetch error:', err);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchTimeline();
+    fetchData();
   }, []);
 
-  // Filter events by time range
+  /**
+   * Filter events by time range
+   * Handles: 6m, 1y, 2y, 5y, all
+   */
   const getFilteredEvents = (events: EvidenceTimelineEvent[]): EvidenceTimelineEvent[] => {
     if (timeRange === 'all') return events;
 
-    const now = new Date();
     const cutoffDate = new Date();
-    const rangeMap = {
+    const rangeMap: Record<string, number> = {
       '6m': 180,
       '1y': 365,
       '2y': 730,
       '5y': 1825,
     };
 
-    cutoffDate.setDate(cutoffDate.getDate() - rangeMap[timeRange as keyof typeof rangeMap]);
-    return events.filter(e => new Date(e.timestamp) >= cutoffDate);
+    const daysAgo = rangeMap[timeRange] || 365;
+    cutoffDate.setDate(cutoffDate.getDate() - daysAgo);
+
+    return events.filter((e) => new Date(e.timestamp) >= cutoffDate);
   };
 
-  // Sort events chronologically (oldest first)
+  /**
+   * Sort events chronologically: newest at top
+   * (Most recent evidence first for better UX)
+   */
   const getSortedEvents = (events: EvidenceTimelineEvent[]): EvidenceTimelineEvent[] => {
     return [...events].sort((a, b) => 
-      new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()
+      new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
     );
   };
 
-  const filteredEvents = timeline ? getFilteredEvents(timeline.events) : [];
-  const sortedEvents = getSortedEvents(filteredEvents);
-
-  // Calculate polarity distribution for filtered events
+  /**
+   * Calculate polarity distribution for filtered events
+   */
   const getPolarityStats = () => {
     const stats = {
       SUPPORTS: 0,
       SUGGESTS: 0,
       CONTRADICTS: 0,
     };
-    filteredEvents.forEach(e => {
+    filteredEvents.forEach((e) => {
       stats[e.polarity as keyof typeof stats]++;
     });
     return stats;
   };
 
-  // Calculate average confidence and delta
+  /**
+   * Compute confidence metrics
+   * - Average confidence across filtered events
+   * - Delta: change from first half to second half
+   */
   const computeConfidenceMetrics = () => {
     if (filteredEvents.length === 0) {
       return { avgConfidence: 0, delta: 0 };
@@ -91,24 +142,31 @@ export const Timeline: React.FC = () => {
     const avgConfidence =
       filteredEvents.reduce((sum, e) => sum + e.confidence, 0) / filteredEvents.length;
 
-    // Delta: compare first half to second half of events
+    // Delta: compare first half to second half
     const midpoint = Math.ceil(filteredEvents.length / 2);
     const firstHalf = filteredEvents.slice(0, midpoint);
     const secondHalf = filteredEvents.slice(midpoint);
 
     const firstAvg = firstHalf.reduce((sum, e) => sum + e.confidence, 0) / firstHalf.length;
-    const secondAvg = secondHalf.length > 0 
-      ? secondHalf.reduce((sum, e) => sum + e.confidence, 0) / secondHalf.length
-      : firstAvg;
+    const secondAvg = 
+      secondHalf.length > 0
+        ? secondHalf.reduce((sum, e) => sum + e.confidence, 0) / secondHalf.length
+        : firstAvg;
 
     const delta = secondAvg - firstAvg;
 
     return { avgConfidence, delta };
   };
 
+  // Compute derived data
+  const filteredEvents = timeline ? getFilteredEvents(timeline.events) : [];
+  const sortedEvents = getSortedEvents(filteredEvents);
   const polarityStats = getPolarityStats();
   const { avgConfidence, delta } = computeConfidenceMetrics();
 
+  /**
+   * Toggle expanded state for event card
+   */
   const toggleExpanded = (index: number) => {
     const newSet = new Set(expandedIndices);
     if (newSet.has(index)) {
@@ -119,6 +177,18 @@ export const Timeline: React.FC = () => {
     setExpandedIndices(newSet);
   };
 
+  /**
+   * Reset all filters and scroll to top
+   */
+  const handleNewQuery = () => {
+    setTimeRange('all');
+    setExpandedIndices(new Set());
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // ============================================================================
+  // RENDER: LOADING STATE
+  // ============================================================================
   if (loading) {
     return (
       <PageContainer maxWidth="7xl">
@@ -129,6 +199,9 @@ export const Timeline: React.FC = () => {
     );
   }
 
+  // ============================================================================
+  // RENDER: ERROR STATE
+  // ============================================================================
   if (error) {
     return (
       <PageContainer maxWidth="7xl">
@@ -139,6 +212,9 @@ export const Timeline: React.FC = () => {
     );
   }
 
+  // ============================================================================
+  // RENDER: EMPTY STATE
+  // ============================================================================
   if (!timeline || timeline.events.length === 0) {
     return (
       <PageContainer maxWidth="7xl">
@@ -149,124 +225,231 @@ export const Timeline: React.FC = () => {
     );
   }
 
+  // ============================================================================
+  // RENDER: MAIN TIMELINE PAGE
+  // ============================================================================
   return (
     <PageContainer maxWidth="7xl">
-      {/* Page header */}
-      <div className="mb-12">
-        <h1 className="text-4xl font-bold text-warm-text mb-3 font-inter tracking-tight">
-          EVIDENCE TIMELINE
-        </h1>
-        <p className="text-warm-text-light font-inter max-w-2xl">
-          Chronological view of supporting, suggestive, and conflicting evidence contributing to the hypothesis.
-        </p>
+      {/* ========================================================================
+          TOP BAR — PAGE TITLE & SUBTITLE
+          ======================================================================== */}
+      <div className="mb-12 flex items-start justify-between">
+        <div>
+          <h1 className="text-4xl font-bold text-warm-text mb-2 font-inter tracking-tight">
+            Evidence Timeline
+          </h1>
+          <p className="text-sm text-warm-text-light font-inter max-w-2xl leading-relaxed">
+            Track how scientific evidence evolves over time for drug repurposing hypotheses
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={handleNewQuery}
+          className="relative z-50 px-4 py-2 text-xs font-inter font-semibold text-warm-text border border-warm-border hover:bg-warm-bg active:bg-warm-border transition-colors rounded-sm cursor-pointer whitespace-nowrap"
+        >
+          New Query
+        </button>
       </div>
 
-      {/* Two-column layout */}
-      <div className="grid grid-cols-3 gap-8">
-        {/* LEFT COLUMN — TEMPORAL SUMMARY */}
-        <div className="col-span-1 space-y-6">
-          {/* Time Range Selector */}
+      {/* ========================================================================
+          FILTER BAR — TIME RANGE SELECTOR
+          ======================================================================== */}
+      <div className="mb-8 p-4 bg-warm-bg border border-warm-border rounded-lg">
+        <div className="flex items-center justify-between gap-4">
           <div>
-            <h2 className="text-xs font-inter font-semibold text-warm-text-subtle mb-3 tracking-wider">
+            <h3 className="text-xs font-inter font-semibold text-warm-text-subtle tracking-wider mb-2">
               TIME RANGE
-            </h2>
+            </h3>
             <TimelineRangeSelector 
               selectedRange={timeRange}
               onRangeChange={setTimeRange}
             />
           </div>
+          
+          <div className="text-right text-xs font-inter text-warm-text-subtle">
+            <div className="font-semibold text-warm-text">{filteredEvents.length}</div>
+            <div>events shown</div>
+          </div>
+        </div>
+      </div>
 
-          {/* Confidence Evolution Card */}
-          <CalmCard>
-            <ConfidenceEvolutionCard
+      {/* ========================================================================
+          TWO-COLUMN LAYOUT: LEFT PANEL (CONFIDENCE) + RIGHT PANEL (TIMELINE)
+          ======================================================================== */}
+      <div className="grid grid-cols-3 gap-8">
+        
+        {/* ====================================================================
+            LEFT COLUMN (1/3) — CONFIDENCE SUMMARY PANEL
+            ==================================================================== */}
+        <div className="col-span-1">
+          <div className="space-y-6 sticky top-20">
+            {/* Confidence Summary Card */}
+            <ConfidenceSummaryCard
               confidence={avgConfidence}
               delta={delta}
-              fromDate={sortedEvents[0]?.timestamp || new Date().toISOString()}
-              toDate={sortedEvents[sortedEvents.length - 1]?.timestamp || new Date().toISOString()}
-              supports={polarityStats.SUPPORTS}
-              contradicts={polarityStats.CONTRADICTS}
-              suggests={polarityStats.SUGGESTS}
+              rosData={rosData}
+              filteredEventsCount={filteredEvents.length}
+              polarityStats={polarityStats}
+              dateRange={{
+                earliest: sortedEvents[sortedEvents.length - 1]?.timestamp || '',
+                latest: sortedEvents[0]?.timestamp || '',
+              }}
             />
-          </CalmCard>
 
-          {/* Summary Stats */}
-          <CalmCard>
-            <div className="space-y-4">
-              <h3 className="text-xs font-inter font-semibold text-warm-text-subtle tracking-wider">
-                EVIDENCE BREAKDOWN
-              </h3>
-              
-              <div className="space-y-3 border-t border-warm-border pt-3">
-                <div className="flex justify-between items-center">
-                  <span className="text-xs text-warm-text-subtle font-inter">Total Events</span>
-                  <span className="text-lg font-semibold text-warm-text font-inter">
-                    {filteredEvents.length}
-                  </span>
-                </div>
-
-                <div className="flex justify-between items-center">
-                  <span className="text-xs text-warm-text-subtle font-inter">Supporting</span>
-                  <span className="text-sm text-warm-text font-inter">
-                    {polarityStats.SUPPORTS}
-                  </span>
-                </div>
-
-                <div className="flex justify-between items-center">
-                  <span className="text-xs text-warm-text-subtle font-inter">Suggesting</span>
-                  <span className="text-sm text-warm-text font-inter">
-                    {polarityStats.SUGGESTS}
-                  </span>
-                </div>
-
-                <div className="flex justify-between items-center">
-                  <span className="text-xs text-warm-text-subtle font-inter">Contradicting</span>
-                  <span className="text-sm text-warm-text font-inter">
-                    {polarityStats.CONTRADICTS}
-                  </span>
-                </div>
-
-                <div className="border-t border-warm-border pt-3 mt-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-xs text-warm-text-subtle font-inter">Date Range</span>
+            {/* Evidence Type Breakdown */}
+            <CalmCard>
+              <div className="space-y-4">
+                <h3 className="text-xs font-inter font-semibold text-warm-text-subtle tracking-wider uppercase">
+                  Evidence Breakdown
+                </h3>
+                
+                <div className="space-y-3 border-t border-warm-border pt-4">
+                  {/* Supporting */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div 
+                        className="w-3 h-3 rounded-full" 
+                        style={{ backgroundColor: '#6b8e6f' }}
+                      />
+                      <span className="text-xs text-warm-text-subtle font-inter">
+                        Supporting (+)
+                      </span>
+                    </div>
+                    <span className="text-sm font-semibold text-warm-text font-inter">
+                      {polarityStats.SUPPORTS}
+                    </span>
                   </div>
-                  <div className="text-xs text-warm-text font-mono mt-1">
-                    {sortedEvents[0] && new Date(sortedEvents[0].timestamp).toLocaleDateString()}
-                    <span className="mx-1 text-warm-text-subtle">→</span>
-                    {sortedEvents[sortedEvents.length - 1] && 
-                      new Date(sortedEvents[sortedEvents.length - 1].timestamp).toLocaleDateString()}
+
+                  {/* Suggesting */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div 
+                        className="w-3 h-3 rounded-full" 
+                        style={{ backgroundColor: '#d4a574' }}
+                      />
+                      <span className="text-xs text-warm-text-subtle font-inter">
+                        Suggesting (±)
+                      </span>
+                    </div>
+                    <span className="text-sm font-semibold text-warm-text font-inter">
+                      {polarityStats.SUGGESTS}
+                    </span>
+                  </div>
+
+                  {/* Contradicting */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div 
+                        className="w-3 h-3 rounded-full" 
+                        style={{ backgroundColor: '#a89668' }}
+                      />
+                      <span className="text-xs text-warm-text-subtle font-inter">
+                        Contradicting (−)
+                      </span>
+                    </div>
+                    <span className="text-sm font-semibold text-warm-text font-inter">
+                      {polarityStats.CONTRADICTS}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Total */}
+                <div className="border-t border-warm-border pt-3 mt-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-semibold text-warm-text font-inter">
+                      Total Events
+                    </span>
+                    <span className="text-lg font-bold text-warm-text font-inter">
+                      {filteredEvents.length}
+                    </span>
                   </div>
                 </div>
               </div>
-            </div>
-          </CalmCard>
+            </CalmCard>
 
-          {/* Provenance note */}
-          <div className="text-xs text-warm-text-subtle font-inter leading-relaxed p-3 border border-warm-border bg-warm-bg">
-            All evidence shown is source-linked and time-stamped.
+            {/* Date Range Info */}
+            <div className="text-xs text-warm-text-subtle font-inter leading-relaxed p-4 border border-warm-border bg-warm-bg rounded-lg">
+              <div className="font-semibold text-warm-text mb-2">Date Range</div>
+              <div className="space-y-1">
+                <div>
+                  <span className="text-warm-text-subtle">From:</span>
+                  {' '}
+                  <span className="text-warm-text font-mono">
+                    {sortedEvents.length > 0
+                      ? new Date(sortedEvents[sortedEvents.length - 1].timestamp).toLocaleDateString('en-US', {
+                          year: 'numeric',
+                          month: 'short',
+                          day: 'numeric',
+                        })
+                      : 'N/A'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-warm-text-subtle">To:</span>
+                  {' '}
+                  <span className="text-warm-text font-mono">
+                    {sortedEvents.length > 0
+                      ? new Date(sortedEvents[0].timestamp).toLocaleDateString('en-US', {
+                          year: 'numeric',
+                          month: 'short',
+                          day: 'numeric',
+                        })
+                      : 'N/A'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Provenance Note */}
+            <div className="text-xs text-warm-text-subtle font-inter leading-relaxed p-3 border border-warm-border rounded-lg italic">
+              ✓ All evidence is source-linked and timestamped. No inference.
+            </div>
           </div>
         </div>
 
-        {/* RIGHT COLUMN — CHRONOLOGICAL EVIDENCE TIMELINE */}
+        {/* ====================================================================
+            RIGHT COLUMN (2/3) — VERTICAL CHRONOLOGICAL TIMELINE
+            ==================================================================== */}
         <div className="col-span-2">
-          <div className="relative pl-8">
-            {/* Vertical hairline connector */}
+          <div className="relative pl-10">
+            {/* Vertical timeline spine */}
             <div 
-              className="absolute left-1.5 top-0 bottom-0 border-l border-warm-border"
+              className="absolute left-3.5 top-0 bottom-0 border-l-2 border-warm-border"
               style={{ width: '1px' }}
             />
 
-            {/* Event cards */}
+            {/* Event cards - newest at top */}
             <div className="space-y-6">
-              {sortedEvents.map((event, idx) => (
-                <div key={idx} className="relative">
-                  <TimelineEventCard
-                    event={event}
-                    index={idx}
-                    isExpanded={expandedIndices.has(idx)}
-                    onToggleExpand={toggleExpanded}
-                  />
+              {sortedEvents.length > 0 ? (
+                sortedEvents.map((event, idx) => (
+                  <div key={`${event.reference_id}-${idx}`} className="relative">
+                    {/* Timeline node marker */}
+                    <div 
+                      className="absolute left-0 w-4 h-4 rounded-full border-2 bg-white -translate-x-1.5 translate-y-6 transition-all duration-200"
+                      style={{
+                        borderColor: 
+                          event.polarity === 'SUPPORTS'
+                            ? '#6b8e6f'
+                            : event.polarity === 'CONTRADICTS'
+                              ? '#a89668'
+                              : '#d4a574',
+                      }}
+                    />
+
+                    {/* Evidence card */}
+                    <EvidenceTimelineCard
+                      event={event}
+                      index={idx}
+                      isExpanded={expandedIndices.has(idx)}
+                      onToggleExpand={toggleExpanded}
+                    />
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-12 text-warm-text-subtle font-inter">
+                  No events in selected time range
                 </div>
-              ))}
+              )}
             </div>
           </div>
         </div>
