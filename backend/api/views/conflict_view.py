@@ -13,7 +13,7 @@ Endpoints:
 - GET /api/conflicts/explanation: Get conflict explanation for last query
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel
 from typing import Literal, Optional, List, Dict, Any
 from datetime import datetime
@@ -99,7 +99,7 @@ class ConflictExplanationResponse(BaseModel):
 # ==============================================================================
 
 @router.get("/explanation", response_model=ConflictExplanationResponse)
-def get_conflict_explanation():
+def get_conflict_explanation(response: Response):
     """
     Get conflict explanation for last queried drug-disease pair
 
@@ -117,6 +117,11 @@ def get_conflict_explanation():
         500: Error reading cached results
     """
     try:
+        # Prevent caching
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+
         cache = get_cache()
 
         # Check if cache has data

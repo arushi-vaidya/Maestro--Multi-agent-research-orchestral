@@ -13,12 +13,13 @@ Endpoints:
 - GET /api/graph/summary: Get nodes and edges for visualization
 """
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Response
 from pydantic import BaseModel
 from typing import List, Literal, Optional, Dict, Any
 import logging
 
 from akgp.schema import NodeType, RelationshipType
+from api.views.cache import get_cache
 
 logger = logging.getLogger(__name__)
 
@@ -173,6 +174,7 @@ def _build_node_metadata(node: Dict[str, Any]) -> Dict[str, Any]:
 
 @router.get("/summary", response_model=GraphSummaryResponse)
 def get_graph_summary(
+    response: Response,
     node_limit: int = Query(100, description="Maximum nodes to return", ge=1, le=1000),
     include_evidence: bool = Query(False, description="Include evidence nodes (can be large)")
 ):
@@ -196,6 +198,11 @@ def get_graph_summary(
         500: Error reading graph
     """
     try:
+        # Prevent caching
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+
         # Import here to avoid circular dependencies
         from api.routes import get_master_agent
 
@@ -209,25 +216,51 @@ def get_graph_summary(
 
         nodes_list = []
         edges_list = []
+        
+        # Check cache for current query context
+        cache = get_cache()
+        drug_id, disease_id = cache.get_last_drug_disease_ids()
+        
+        # Priority Strategy: If we have specific drug/disease from query, focus graph on them
+        priority_nodes_found = False
+        
+        if drug_id and disease_id:
+            logger.info(f"🎯 Focusing graph on query entities: {drug_id}, {disease_id}")
+            
+            # Fetch focal nodes
+            focal_ids = [did for did in [drug_id, disease_id] if did]
+            focal_nodes = []
+            
+            for fid in focal_ids:
+                node = graph_manager.get_node(fid)
+                if node:
+                    focal_nodes.append(node)
+                    
+            if focal_nodes:
+                priority_nodes_found = True
+                # Fetch 1-hop neighbors for focal nodes
+                neighbor_ids = set()
+                neighbor_nodes = []
+                
+                for fnode in focal_nodes:
+                    try:
+                        rels = graph_manager.get_relationships_for_node(fnode['id'], direction="both")
+                        for rel in rels:
+                            neighbor_id = rel['target_id'] if rel['source_id'] == fnode['id'] else rel['source_id']
+                            if neighbor_id not in neighbor_ids and neighbor_id not in focal_ids:
+                                neighbor_ids.add(neighbor_id)
+                                n_node = graph_manager.get_node(neighbor_id)
+                                if n_node:
+                                    neighbor_nodes.append(n_node)
+                    except Exception as e:
+                        logger.warning(f"Error fetching neighbors for {fnode['id']}: {e}")
 
-        # Determine which node types to fetch
-        node_types_to_fetch = [NodeType.DRUG, NodeType.DISEASE]
-
-        if include_evidence:
-            node_types_to_fetch.extend([
-                NodeType.EVIDENCE,
-                NodeType.TRIAL,
-                NodeType.PATENT,
-                NodeType.MARKET_SIGNAL
-            ])
-
-        # Fetch nodes by type
-        for node_type in node_types_to_fetch:
-            try:
-                nodes = graph_manager.find_nodes_by_type(node_type, limit=node_limit)
-                logger.info(f"Found {len(nodes)} {node_type.value} nodes")
-
-                for node in nodes:
+                # Combine nodes (focal + neighbors)
+                target_nodes = focal_nodes + neighbor_nodes
+                logger.info(f"   Found {len(focal_nodes)} focal nodes + {len(neighbor_nodes)} neighbors")
+                
+                # Add to response list
+                for node in target_nodes[:node_limit]:
                     node_view = GraphNodeView(
                         id=node['id'],
                         label=_extract_node_label(node),
@@ -235,10 +268,42 @@ def get_graph_summary(
                         metadata=_build_node_metadata(node)
                     )
                     nodes_list.append(node_view)
+            else:
+                logger.warning(f"⚠️ Query entities {drug_id}, {disease_id} found in cache but MISSING from graph manager. Falling back.")
 
-            except Exception as e:
-                logger.warning(f"Error fetching {node_type.value} nodes: {e}")
-                continue
+        # Fallback Strategy: If priority strategy failed or yielded no nodes, fetch global top nodes
+        if not priority_nodes_found:
+            logger.info("🌍 No specific query context (or entities missing) - fetching global top nodes")
+            
+            # Determine which node types to fetch
+            node_types_to_fetch = [NodeType.DRUG, NodeType.DISEASE]
+
+            if include_evidence:
+                node_types_to_fetch.extend([
+                    NodeType.EVIDENCE,
+                    NodeType.TRIAL,
+                    NodeType.PATENT,
+                    NodeType.MARKET_SIGNAL
+                ])
+
+            # Fetch nodes by type
+            for node_type in node_types_to_fetch:
+                try:
+                    nodes = graph_manager.find_nodes_by_type(node_type, limit=node_limit)
+                    logger.info(f"Found {len(nodes)} {node_type.value} nodes")
+
+                    for node in nodes:
+                        node_view = GraphNodeView(
+                            id=node['id'],
+                            label=_extract_node_label(node),
+                            type=_normalize_node_type(node.get('node_type', '')),
+                            metadata=_build_node_metadata(node)
+                        )
+                        nodes_list.append(node_view)
+
+                except Exception as e:
+                    logger.warning(f"Error fetching {node_type.value} nodes: {e}")
+                    continue
 
         # Fetch relationships for collected nodes
         node_ids = {node.id for node in nodes_list}

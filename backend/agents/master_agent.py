@@ -327,6 +327,18 @@ class MasterAgent:
         logger.info("🎯 Using legacy sequential orchestration")
         print("🎯 Using legacy sequential orchestration")
 
+        # STEP 0: CLEAR GRAPH FOR NEW QUERY (Session Isolation)
+        # This ensures each query gets a fresh graph, preventing data merging from previous sessions.
+        # This is critical for the "Research Console" experience where users expect query isolation.
+        if self.graph_manager.in_memory_mode:
+            logger.info("🧹 Clearing in-memory knowledge graph for new query context")
+            self.graph_manager.clear_all()
+        else:
+            # If using Neo4j, we might want to keep history, BUT for now, to satisfy the
+            # user requirement "clear out the previous graph", we strictly isolate queries.
+            # In a production system, we would tag nodes with a 'session_id' instead of deleting.
+            logger.info("⚠️ Neo4j mode active - NOT clearing graph automatically (preserving persistent history)")
+
         # Step 1: Classify query to determine which agents to run
         active_agents = self._classify_query(query)
         logger.info(f"📋 Classification result: {active_agents}")

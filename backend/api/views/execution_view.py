@@ -13,7 +13,7 @@ Endpoints:
 - GET /api/execution/status: Get execution status and timing for last query
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel
 from typing import List, Dict, Any, Optional
 from datetime import datetime
@@ -95,7 +95,7 @@ class ExecutionStatusResponse(BaseModel):
 # ==============================================================================
 
 @router.get("/status", response_model=ExecutionStatusResponse)
-def get_execution_status():
+def get_execution_status(response: Response):
     """
     Get execution status for last query
 
@@ -113,13 +113,24 @@ def get_execution_status():
         500: Error reading cached results
     """
     try:
+        # Prevent caching
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+
         cache = get_cache()
 
         # Check if cache has data
         if cache.is_empty():
+            # Log at debug level since this is expected during polling
+            logger.debug("Execution status requested but cache is empty (no query executed yet)")
             raise HTTPException(
                 status_code=404,
-                detail="No execution data available. Execute a query via POST /api/query first."
+                detail={
+                    "error": "No execution data available",
+                    "message": "No query has been executed yet. Please submit a query via POST /api/query first.",
+                    "suggestion": "This is normal on initial page load or before the first query."
+                }
             )
 
         # Get execution metadata from cache
@@ -181,7 +192,7 @@ def get_execution_status():
             )
             agent_details.append(detail)
 
-        # Extract ingestion summary from execution metadata
+        # Extract ingestion summary from execution metadata or agent status
         ingestion_summary = {}
         if execution_metadata and 'akgp_ingestion_summary' in execution_metadata:
             akgp_summary = execution_metadata['akgp_ingestion_summary']
@@ -190,6 +201,23 @@ def get_execution_status():
                 "ingested_evidence": akgp_summary.get('ingested_evidence', 0),
                 "rejected_evidence": akgp_summary.get('rejected_evidence', 0)
             }
+        else:
+            # Fallback: aggregate from individual agent AKGP ingestion summaries
+            total_evidence = 0
+            ingested_evidence = 0
+            rejected_evidence = 0
+            for agent_status in agent_execution_status:
+                if 'akgp_ingestion' in agent_status:
+                    total_evidence += agent_status['akgp_ingestion'].get('total_evidence', 0)
+                    ingested_evidence += agent_status['akgp_ingestion'].get('ingested_evidence', 0)
+                    rejected_evidence += agent_status['akgp_ingestion'].get('rejected_evidence', 0)
+            
+            if total_evidence > 0:
+                ingestion_summary = {
+                    "total_evidence": total_evidence,
+                    "ingested_evidence": ingested_evidence,
+                    "rejected_evidence": rejected_evidence
+                }
 
         # Calculate total execution time
         execution_time_ms = 0
