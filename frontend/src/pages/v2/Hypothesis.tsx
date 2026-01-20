@@ -202,18 +202,22 @@ export const Hypothesis: React.FC = () => {
       </div>
 
       {/* 2. INPUT PANEL */}
-      <CalmCard className={`mb-8 transition-opacity duration-500 ${consoleState === 'COMPLETED' ? 'opacity-75' : 'opacity-100'}`}>
+      <CalmCard className={`mb-8 transition-opacity duration-500 border-2 border-blue-100 bg-blue-50/20 ${consoleState === 'COMPLETED' ? 'opacity-75' : 'opacity-100'}`}>
         <div className="mb-4">
-           <label className="block text-xs font-semibold text-warm-text-subtle uppercase tracking-wider mb-2 font-inter">
-             Research Hypothesis
-           </label>
+           <div className="flex items-center gap-2 mb-2">
+             <div className="w-2 h-2 rounded-full bg-blue-500" />
+             <label className="block text-xs font-semibold text-blue-900 uppercase tracking-wider font-inter">
+               Research Hypothesis
+             </label>
+           </div>
            <CalmInput 
              value={query}
              onChange={(val) => {
-               // When user starts typing a new query, clear old results
+               // When user starts typing a new query, clear old results immediately
                if (consoleState === 'COMPLETED') {
                  setExecutionData(null);
                  setRosData(null);
+                 setConsoleState('IDLE');
                }
                setQuery(val);
              }}
@@ -503,34 +507,34 @@ export const Hypothesis: React.FC = () => {
             
             {/* 6. NAVIGATION AFFORDANCES */}
             <div>
-               <h3 className="text-xs font-semibold text-warm-text-subtle uppercase tracking-wider mb-3 font-inter">
-                 Deep Dive
-               </h3>
+               <div className="flex items-center gap-2 mb-3">
+                 <div className="w-2 h-2 rounded-full bg-indigo-500" />
+                 <h3 className="text-xs font-semibold text-warm-text-subtle uppercase tracking-wider font-inter">
+                   Deep Dive
+                 </h3>
+               </div>
                <div className="space-y-3">
-                 <CalmButton 
-                   variant="secondary" 
-                   className="w-full justify-between group"
+                 <button
+                   className="w-full flex items-center justify-between px-4 py-3 rounded-lg font-medium text-sm transition-all font-inter bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-md hover:shadow-lg"
                    onClick={() => navigate('/timeline')}
                  >
                    <span>Evidence Timeline</span>
-                   <ArrowRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" />
-                 </CalmButton>
-                 <CalmButton 
-                   variant="secondary" 
-                   className="w-full justify-between group"
+                   <ArrowRight className="w-4 h-4" />
+                 </button>
+                 <button
+                   className="w-full flex items-center justify-between px-4 py-3 rounded-lg font-medium text-sm transition-all font-inter bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white shadow-md hover:shadow-lg"
                    onClick={() => navigate('/graph')}
                  >
                    <span>Knowledge Graph</span>
-                   <Database className="w-4 h-4 opacity-50" />
-                 </CalmButton>
-                 <CalmButton 
-                   variant="secondary" 
-                   className="w-full justify-between group"
+                   <Database className="w-4 h-4" />
+                 </button>
+                 <button
+                   className="w-full flex items-center justify-between px-4 py-3 rounded-lg font-medium text-sm transition-all font-inter bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white shadow-md hover:shadow-lg"
                    onClick={() => navigate('/conflicts')}
                  >
                    <span>Conflict Analysis</span>
-                   <AlertCircle className="w-4 h-4 opacity-50" />
-                 </CalmButton>
+                   <AlertCircle className="w-4 h-4" />
+                 </button>
                </div>
             </div>
           </div>

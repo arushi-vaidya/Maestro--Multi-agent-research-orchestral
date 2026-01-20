@@ -103,12 +103,15 @@ const ReferencesPanel: React.FC<ReferencesPanelProps> = ({ references, rosMetada
   };
 
   return (
-    <CalmCard className="border border-warm-divider">
+    <CalmCard className="border-2 border-indigo-100 bg-indigo-50/20">
       {/* Header */}
-      <div className="mb-4 pb-4 border-b border-warm-divider">
-        <h3 className="text-sm font-semibold text-warm-text font-inter uppercase tracking-wide mb-2">
-          Research References
-        </h3>
+      <div className="mb-4 pb-4 border-b border-indigo-100">
+        <div className="flex items-center gap-2 mb-2">
+          <div className="w-2 h-2 rounded-full bg-indigo-500" />
+          <h3 className="text-sm font-semibold text-indigo-900 font-inter uppercase tracking-wide">
+            Research References
+          </h3>
+        </div>
         <p className="text-xs text-warm-text-light font-inter">
           {references.length} sources collected from {Object.keys(refsByAgent).length} agents
         </p>
@@ -116,19 +119,50 @@ const ReferencesPanel: React.FC<ReferencesPanelProps> = ({ references, rosMetada
 
       {/* References by Agent */}
       <div className="space-y-3">
-        {Object.entries(refsByAgent).map(([agentId, refs]) => (
+        {Object.entries(refsByAgent).map(([agentId, refs]) => {
+          const getAgentBgColor = (id: string) => {
+            switch (id) {
+              case 'clinical':
+                return 'bg-gradient-to-r from-blue-50 to-blue-100/50 border-blue-200 hover:from-blue-100 hover:to-blue-150';
+              case 'market':
+                return 'bg-gradient-to-r from-emerald-50 to-emerald-100/50 border-emerald-200 hover:from-emerald-100 hover:to-emerald-150';
+              case 'patent':
+                return 'bg-gradient-to-r from-purple-50 to-purple-100/50 border-purple-200 hover:from-purple-100 hover:to-purple-150';
+              case 'literature':
+                return 'bg-gradient-to-r from-orange-50 to-orange-100/50 border-orange-200 hover:from-orange-100 hover:to-orange-150';
+              default:
+                return 'bg-warm-bg-alt border-warm-divider';
+            }
+          };
+
+          const getAgentTextColor = (id: string) => {
+            switch (id) {
+              case 'clinical':
+                return 'text-blue-900';
+              case 'market':
+                return 'text-emerald-900';
+              case 'patent':
+                return 'text-purple-900';
+              case 'literature':
+                return 'text-orange-900';
+              default:
+                return 'text-warm-text';
+            }
+          };
+
+          return (
           <div key={agentId}>
             {/* Agent Header */}
             <button
               onClick={() => setExpandedAgent(expandedAgent === agentId ? null : agentId)}
-              className="w-full flex items-center justify-between p-3 bg-warm-bg-alt border border-warm-divider rounded-lg hover:bg-warm-divider/50 transition-colors"
+              className={`w-full flex items-center justify-between p-3 border rounded-lg transition-colors ${getAgentBgColor(agentId)}`}
             >
               <div className="flex items-center gap-3">
-                <div className="p-1.5 bg-white border border-warm-divider rounded">
+                <div className={`p-1.5 rounded font-semibold ${getAgentTextColor(agentId)}`}>
                   {getAgentIcon(agentId)}
                 </div>
                 <div className="text-left">
-                  <p className="text-sm font-semibold text-warm-text font-inter capitalize">
+                  <p className={`text-sm font-semibold font-inter capitalize ${getAgentTextColor(agentId)}`}>
                     {getAgentLabel(agentId)}
                   </p>
                   <p className="text-xs text-warm-text-light font-inter">
@@ -137,9 +171,9 @@ const ReferencesPanel: React.FC<ReferencesPanelProps> = ({ references, rosMetada
                 </div>
               </div>
               {expandedAgent === agentId ? (
-                <ChevronUp className="w-4 h-4 text-warm-text-subtle" />
+                <ChevronUp className={`w-4 h-4 ${getAgentTextColor(agentId)}`} />
               ) : (
-                <ChevronDown className="w-4 h-4 text-warm-text-subtle" />
+                <ChevronDown className={`w-4 h-4 ${getAgentTextColor(agentId)}`} />
               )}
             </button>
 
@@ -225,27 +259,31 @@ const ReferencesPanel: React.FC<ReferencesPanelProps> = ({ references, rosMetada
               </div>
             )}
           </div>
-        ))}
+        );
+        })}
       </div>
 
       {/* Footer Stats */}
       {rosMetadata && (
-        <div className="mt-6 pt-4 border-t border-warm-divider">
-          <p className="text-xs font-semibold text-warm-text-subtle uppercase tracking-wide mb-2 font-inter">
-            Evidence Distribution
-          </p>
-          <div className="grid grid-cols-3 gap-2 text-xs">
-            <div className="p-2 bg-sage-50 border border-sage-100 rounded">
-              <p className="text-sage-700 font-semibold">{rosMetadata.num_supporting_evidence || 0}</p>
-              <p className="text-sage-600">Supporting</p>
+        <div className="mt-6 pt-4 border-t border-indigo-100">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-2 h-2 rounded-full bg-indigo-500" />
+            <p className="text-xs font-semibold text-indigo-900 uppercase tracking-wide font-inter">
+              Evidence Distribution
+            </p>
+          </div>
+          <div className="grid grid-cols-3 gap-3 text-xs">
+            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-lg">
+              <p className="text-emerald-700 font-bold text-lg">{rosMetadata.num_supporting_evidence || 0}</p>
+              <p className="text-emerald-600 font-medium">Supporting</p>
             </div>
-            <div className="p-2 bg-amber-50 border border-amber-100 rounded">
-              <p className="text-amber-700 font-semibold">{rosMetadata.num_suggesting_evidence || 0}</p>
-              <p className="text-amber-600">Suggesting</p>
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+              <p className="text-amber-700 font-bold text-lg">{rosMetadata.num_suggesting_evidence || 0}</p>
+              <p className="text-amber-600 font-medium">Suggesting</p>
             </div>
-            <div className="p-2 bg-rose-50 border border-rose-100 rounded">
-              <p className="text-rose-700 font-semibold">{rosMetadata.num_contradicting_evidence || 0}</p>
-              <p className="text-rose-600">Contradicting</p>
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg">
+              <p className="text-rose-700 font-bold text-lg">{rosMetadata.num_contradicting_evidence || 0}</p>
+              <p className="text-rose-600 font-medium">Contradicting</p>
             </div>
           </div>
         </div>
