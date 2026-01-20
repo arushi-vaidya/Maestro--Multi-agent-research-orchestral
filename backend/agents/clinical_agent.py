@@ -571,7 +571,7 @@ Major insights, future directions.
 REMEMBER: Output only plain text with headings in UPPERCASE, one blank line after each heading, then content. No markdown, no asterisks, no special formatting."""
 
         payload = {
-            "model": "llama-3.1-70b-versatile",  # Using larger model for better analysis
+            "model": "mixtral-8x7b-32768",
             "messages": [
                 {
                     "role": "system",
@@ -583,7 +583,7 @@ REMEMBER: Output only plain text with headings in UPPERCASE, one blank line afte
                 }
             ],
             "temperature": 0.7,
-            "max_tokens": 8000  # Increased for comprehensive output
+            "max_tokens": 2000
         }
         
         try:

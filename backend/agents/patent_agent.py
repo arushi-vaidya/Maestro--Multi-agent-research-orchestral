@@ -20,9 +20,9 @@ try:
 except ImportError:
     LLM_AVAILABLE = False
 
-# Import patent client (Lens.org - works from Indian servers)
+# Import patent clients
 try:
-    from data_sources.patents import LensOrgClient
+    from data_sources.patents import GooglePatentsClient, LensOrgClient
     PATENT_CLIENT_AVAILABLE = True
 except ImportError:
     PATENT_CLIENT_AVAILABLE = False
@@ -69,16 +69,21 @@ class PatentAgent:
         self.groq_api_key = os.getenv("GROQ_API_KEY", "")
         self.gemini_api_key = os.getenv("GOOGLE_API_KEY", "")
 
-        # Initialize patent client (Lens.org)
+        # Initialize patent clients (Google Patents first, fallback to Lens.org)
         if PATENT_CLIENT_AVAILABLE:
             try:
-                self.patent_client = LensOrgClient()
-                logger.info("✅ Lens.org Patents API client initialized")
+                self.patent_client = GooglePatentsClient()
+                logger.info("✅ Google Patents client initialized (primary)")
             except Exception as e:
-                logger.error(f"Lens.org client initialization failed: {e}")
-                self.patent_client = None
+                logger.warning(f"Google Patents client initialization failed: {e}")
+                try:
+                    self.patent_client = LensOrgClient()
+                    logger.info("✅ Lens.org Patents API client initialized (fallback)")
+                except Exception as e2:
+                    logger.error(f"Both patent clients failed: {e2}")
+                    self.patent_client = None
         else:
-            logger.warning("⚠️  Patent client not available (install Lens.org client)")
+            logger.warning("⚠️  Patent client not available")
             self.patent_client = None
 
         # Initialize web search (for patent landscape intelligence)
@@ -356,8 +361,8 @@ class PatentAgent:
         try:
             logger.info(f"Searching for patents expiring in next {years_from_now} years")
             expiring = self.patent_client.search_expiring_patents(
-                keywords=keywords,
-                years_from_now=years_from_now
+                drug=keywords,
+                years_until_expiration=years_from_now
             )
 
             # Group by assignee
