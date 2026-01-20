@@ -340,12 +340,27 @@ export const Hypothesis: React.FC = () => {
                </h3>
                <CalmCard className="h-full">
                  <div className="space-y-4">
-                   {/* Main Finding */}
+                   {/* Main Finding - COMPREHENSIVE SUMMARY */}
                    <div>
-                     <p className="text-xs font-semibold text-warm-text-subtle uppercase tracking-wide mb-2 font-inter">Research Opportunity</p>
-                     <p className="text-sm text-warm-text leading-relaxed font-inter">
-                       {rosData.explanation || "No summary available."}
-                     </p>
+                     <p className="text-xs font-semibold text-warm-text-subtle uppercase tracking-wide mb-2 font-inter">Comprehensive Analysis Report</p>
+                     <div className="text-sm text-warm-text leading-relaxed font-inter max-w-none space-y-3 max-h-96 overflow-y-auto pr-2">
+                       {queryData?.summary ? (
+                         <div 
+                           className="prose prose-sm max-w-none prose-headings:text-warm-text prose-headings:font-semibold prose-p:text-warm-text prose-li:text-warm-text prose-strong:text-warm-text"
+                           dangerouslySetInnerHTML={{ 
+                             __html: queryData.summary
+                               .replace(/### (.*)/g, '<h3 class="text-base font-semibold mt-4 mb-2">$1</h3>')
+                               .replace(/## (.*)/g, '<h2 class="text-lg font-bold mt-5 mb-3">$1</h2>')
+                               .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                               .replace(/\n- /g, '<br/>• ')
+                               .replace(/\n\n/g, '<br/><br/>')
+                               .replace(/\n/g, '<br/>')
+                           }} 
+                         />
+                       ) : (
+                         <p>{rosData.explanation || "No summary available."}</p>
+                       )}
+                     </div>
                    </div>
 
                    {/* Agent Contributions */}

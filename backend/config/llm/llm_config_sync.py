@@ -127,30 +127,56 @@ def _generate_gemini(
     max_tokens: int,
     api_key: str
 ) -> str:
-    """Generate using Gemini API (stable model, quota-friendly)."""
-    model = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
-
+    """Generate using Gemini API with multi-model fallback."""
+    # Try multiple Gemini models in order of preference
+    models = [
+        os.getenv("GEMINI_MODEL", "gemini-2.0-flash-exp"),
+        "gemini-1.5-pro",
+        "gemini-1.5-pro-latest",
+        "gemini-pro"
+    ]
+    
     # Combine system prompt with user prompt for Gemini
     full_prompt = prompt
     if system_prompt:
         full_prompt = f"{system_prompt}\n\n{prompt}"
 
-    payload = {
+    payload_template = {
         "contents": [{
             "parts": [{"text": full_prompt}]
         }],
         "generationConfig": {
             "temperature": temperature,
-            "maxOutputTokens": min(max_tokens, 8192)  # Keep under common limits
+            "maxOutputTokens": min(max_tokens, 8192)
         }
     }
 
-    response = requests.post(url, json=payload, timeout=60)  # Increased timeout
-    response.raise_for_status()
-
-    result = response.json()
-    return result["candidates"][0]["content"]["parts"][0]["text"]
+    last_error = None
+    for model in models:
+        try:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
+            response = requests.post(url, json=payload_template, timeout=60)
+            response.raise_for_status()
+            
+            result = response.json()
+            logger.info(f"✅ Gemini model {model} succeeded")
+            return result["candidates"][0]["content"]["parts"][0]["text"]
+            
+        except requests.exceptions.HTTPError as e:
+            status = e.response.status_code if e.response else "unknown"
+            logger.warning(f"Gemini model {model} failed (status {status}), trying next model...")
+            last_error = e
+            continue
+        except Exception as e:
+            logger.warning(f"Gemini model {model} failed: {e}, trying next model...")
+            last_error = e
+            continue
+    
+    # If all models failed, raise the last error
+    if last_error:
+        raise last_error
+    else:
+        raise Exception("All Gemini models failed")
 
 
 # Test function
