@@ -1,328 +1,379 @@
 /**
- * Hypothesis & ROS Page - PRIMARY PAGE
+ * Research Console - Primary Interaction Surface
  * 
- * Architecture: Three-zone research console
- * Zone A: Hypothesis input (top)
- * Zone B: Real-time execution timeline (middle)
- * Zone C: Progressive result disclosure (bottom)
+ * STRICT STATE MACHINE IMPLEMENTATION
+ * 0. IDLE: Input ready
+ * 1. SUBMITTING: Query sent
+ * 2. EXECUTING: Polling progress (Live)
+ * 3. COMPLETED: ROS & Data available
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   PageContainer,
-  CalmButton,
-  CalmInput,
   CalmCard,
-  ExecutionTimeline,
-  ROSResultCard,
-  ConflictSummary,
-  EvidenceTimelinePreview,
+  CalmInput,
+  CalmButton,
+  CalmBadge,
+  ROSResultCard
 } from '../../components/calm';
-import { useExecutionStatusPoller } from '../../hooks/useExecutionStatusPoller';
 import { api } from '../../services/api';
-import type {
-  ROSViewResponse,
-  ExecutionStatusResponse,
-  ConflictExplanationResponse,
-  EvidenceTimelineResponse,
-  QueryResponse,
-} from '../../types/api';
-import { Sparkles, TrendingUp, AlertCircle, Loader2, CheckCircle2 } from 'lucide-react';
+import type { ROSViewResponse, ExecutionStatusResponse } from '../../types/api';
+import { 
+  Sparkles, 
+  Activity, 
+  CheckCircle2, 
+  Clock, 
+  AlertCircle,
+  ArrowRight,
+  Database,
+  FileText,
+  Search,
+  Scale
+} from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+
+// STRICT PAGE STATES
+type ConsoleState = 'IDLE' | 'SUBMITTING' | 'EXECUTING' | 'COMPLETED';
+
+// Agent configuration for consistent display order
+const AGENTS = [
+  { id: 'clinical', label: 'Clinical Trials', icon: Activity },
+  { id: 'market', label: 'Market Intelligence', icon: Search },
+  { id: 'patent', label: 'Patent Landscape', icon: Scale },
+  { id: 'literature', label: 'Scientific Literature', icon: FileText },
+];
 
 export const Hypothesis: React.FC = () => {
-  // Input state
+  const navigate = useNavigate();
+
+  // --- STATE ---
+  const [consoleState, setConsoleState] = useState<ConsoleState>('IDLE');
   const [query, setQuery] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState<string | null>(null);
-
-  // Execution state
-  const [executionStarted, setExecutionStarted] = useState(false);
-  const [executionStatus, setExecutionStatus] = useState<ExecutionStatusResponse | null>(null);
-  const { status, isPolling, error: pollingError } = useExecutionStatusPoller(executionStarted);
-
-  // Result state (progressive disclosure)
+  const [executionData, setExecutionData] = useState<ExecutionStatusResponse | null>(null);
   const [rosData, setRosData] = useState<ROSViewResponse | null>(null);
-  const [conflictData, setConflictData] = useState<ConflictExplanationResponse | null>(null);
-  const [evidenceData, setEvidenceData] = useState<EvidenceTimelineResponse | null>(null);
-  const [resultsLoaded, setResultsLoaded] = useState(false);
-  const [initialQueryResponse, setInitialQueryResponse] = useState<QueryResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  
+  // Polling ref to stop polling when complete
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Update execution status when polling returns data
-  useEffect(() => {
-    if (status) {
-      console.log('[Hypothesis] Execution status update:', status);
-      setExecutionStatus(status);
-    }
-  }, [status]);
+  // --- ACTIONS ---
 
-  // Fetch results after execution completes
-  useEffect(() => {
-    if (!executionStatus) return;
-
-    // Check if all agents are done
-    const totalTriggered = Array.isArray(executionStatus.agents_triggered) 
-      ? executionStatus.agents_triggered.length 
-      : 0;
-    const totalCompleted = (Array.isArray(executionStatus.agents_completed) ? executionStatus.agents_completed.length : 0) + 
-                          (Array.isArray(executionStatus.agents_failed) ? executionStatus.agents_failed.length : 0);
-    const allAgentsDone = totalTriggered > 0 && totalCompleted >= totalTriggered;
-
-    console.log('[Hypothesis] Execution check:', {
-      agents_triggered: executionStatus.agents_triggered,
-      agents_completed: executionStatus.agents_completed,
-      agents_failed: executionStatus.agents_failed,
-      totalTriggered,
-      totalCompleted,
-      allAgentsDone,
-      resultsLoaded,
-    });
-
-    // Removed !isPolling condition - fetch results immediately when agents complete
-    if (allAgentsDone && !resultsLoaded) {
-      console.log('[Hypothesis] All agents done, fetching results...');
-      fetchResults();
-    }
-  }, [executionStatus, resultsLoaded]);
-
-  const fetchResults = async () => {
-    try {
-      console.log('[Hypothesis] Fetching results from API facade...');
-      
-      // Fetch all results in parallel
-      const [ros, conflict, evidence] = await Promise.all([
-        api.getROSLatest().catch((err) => {
-          console.error('[Hypothesis] Failed to fetch ROS:', err);
-          return null;
-        }),
-        api.getConflictExplanation().catch((err) => {
-          console.error('[Hypothesis] Failed to fetch conflicts:', err);
-          return null;
-        }),
-        api.getEvidenceTimeline().catch((err) => {
-          console.error('[Hypothesis] Failed to fetch evidence:', err);
-          return null;
-        }),
-      ]);
-
-      console.log('[Hypothesis] API responses:', { ros, conflict, evidence });
-
-      if (ros) {
-        console.log('[Hypothesis] Setting ROS data:', ros);
-        setRosData(ros);
-      }
-      if (conflict) setConflictData(conflict);
-      if (evidence) setEvidenceData(evidence);
-      setResultsLoaded(true);
-      console.log('[Hypothesis] Results loaded successfully');
-    } catch (error) {
-      console.error('[Hypothesis] Failed to fetch results:', error);
-    }
-  };
-
-  const handleSubmit = async () => {
+  const handleAnalyze = async () => {
     if (!query.trim()) return;
 
-    setIsSubmitting(true);
-    setSubmitError(null);
-    setExecutionStarted(false);
-    setExecutionStatus(null);
+    // Transition: IDLE -> SUBMITTING
+    setConsoleState('SUBMITTING');
+    setError(null);
+    setExecutionData(null);
     setRosData(null);
-    setConflictData(null);
-    setEvidenceData(null);
-    setResultsLoaded(false);
-    setInitialQueryResponse(null);
 
     try {
-      // Submit query and capture initial response (may include insights)
-      console.log('[Hypothesis] Submitting query:', query);
-      const resp = await api.submitQuery(query);
-      console.log('[Hypothesis] Query submitted successfully, response:', resp);
-      setInitialQueryResponse(resp);
+      // Start the heavy job
+      // Note: We transition to EXECUTING immediately to show the UI
+      setConsoleState('EXECUTING');
+      
+      // Fire the POST request (Blocking)
+      // We start polling in parallel in useEffect
+      await api.submitQuery(query);
 
-      // Start execution polling
-      setExecutionStarted(true);
-    } catch (error: any) {
-      console.error('[Hypothesis] Query submission error:', error);
-      setSubmitError(
-        error?.response?.data?.detail || 'Failed to submit hypothesis. Please try again.'
-      );
-    } finally {
-      setIsSubmitting(false);
+      // Once POST returns, we assume completion
+      await handleCompletion();
+      
+    } catch (err: any) {
+      console.error('Analysis failed:', err);
+      setError(err?.response?.data?.detail || 'System failed to execute analysis. Please try again.');
+      setConsoleState('IDLE'); // Reset on error
     }
   };
 
-  // Determine if input should be disabled
-  const isExecuting = isSubmitting || executionStarted;
+  const handleCompletion = async () => {
+    try {
+      // Fetch final states
+      const [finalExecution, finalRos] = await Promise.all([
+        api.getExecutionStatus(),
+        api.getROSLatest()
+      ]);
+
+      setExecutionData(finalExecution);
+      setRosData(finalRos);
+      setConsoleState('COMPLETED');
+    } catch (err) {
+      console.error('Failed to fetch results:', err);
+      // Fallback: stay in executing or show partial error? 
+      // We'll show error but keep state reachable
+      setError('Analysis finished but results could not be loaded.');
+    }
+  };
+
+  // --- EFFECTS ---
+
+  // Polling Logic: Active only in EXECUTING state
+  useEffect(() => {
+    if (consoleState === 'EXECUTING') {
+      const poll = async () => {
+        try {
+          const status = await api.getExecutionStatus();
+          // Verify this status belongs to CURRENT query (by checking timestamp or active agents)
+          // Since we can't easily check ID, we just display what we get.
+          // If the backend is blocking, this might timeout or return old data.
+          // We update state if we get a valid response.
+          setExecutionData(status);
+        } catch (e) {
+          // Ignore polling errors (backend busy)
+          console.debug('Polling skipped/failed:', e);
+        }
+      };
+
+      // Poll every 1s
+      pollIntervalRef.current = setInterval(poll, 1000);
+      poll(); // Immediate poll
+    }
+
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+      }
+    };
+  }, [consoleState]);
+
+  // --- RENDER HELPERS ---
+
+  const getStatusBadge = (state: ConsoleState) => {
+    switch (state) {
+      case 'IDLE': return <CalmBadge variant="neutral">System Ready</CalmBadge>;
+      case 'SUBMITTING': return <CalmBadge variant="info">Initiating...</CalmBadge>;
+      case 'EXECUTING': return <CalmBadge variant="warning">Processing</CalmBadge>;
+      case 'COMPLETED': return <CalmBadge variant="positive">Analysis Complete</CalmBadge>;
+    }
+  };
+
+  const getAgentStatus = (agentId: string) => {
+    if (!executionData) return 'pending';
+    if (executionData.agents_completed.includes(agentId)) return 'completed';
+    if (executionData.agents_failed.includes(agentId)) return 'failed';
+    if (executionData.agents_triggered.includes(agentId)) return 'running';
+    // If we are COMPLETED but agent not in triggered, it was skipped
+    if (consoleState === 'COMPLETED') return 'skipped';
+    return 'pending'; // Default during execution
+  };
+
+  // --- UI SECTIONS ---
 
   return (
     <PageContainer maxWidth="lg">
-      <div className="mb-12 animate-calm-fade-in">
-        <div className="flex items-center gap-3 mb-3">
-          <div className="w-10 h-10 bg-gradient-to-br from-terracotta-500 to-terracotta-600 rounded-xl flex items-center justify-center shadow-md">
-            <Sparkles className="w-5 h-5 text-white" />
-          </div>
-          <h1 className="text-4xl font-bold text-warm-text font-inter tracking-tight">
-            Research Hypothesis Analysis
+      
+      {/* 1. CONSOLE HEADER */}
+      <div className="flex items-center justify-between mb-8 pt-4">
+        <div>
+          <h1 className="text-3xl font-bold text-warm-text font-inter tracking-tight mb-1">
+            Research Console
           </h1>
+          <p className="text-warm-text-light font-inter text-sm">
+            MAESTRO Pharmaceutical Intelligence Grid
+          </p>
         </div>
-        <p className="text-lg text-warm-text-light font-inter ml-13">
-          Submit a drug-disease hypothesis for systematic evaluation powered by multi-agent orchestration.
-        </p>
+        <div className="flex items-center gap-3">
+           {getStatusBadge(consoleState)}
+        </div>
       </div>
 
-      {/* ZONE A: Input Section - Minimal, Always Visible */}
-      <CalmCard className="mb-8 shadow-lg">
-        <div className="flex items-start gap-3 mb-4">
-          <TrendingUp className="w-5 h-5 text-terracotta-500 mt-1 flex-shrink-0" />
-          <div className="flex-1">
-            <label className="block text-sm font-semibold text-warm-text mb-2 font-inter">
-              Research Hypothesis
-            </label>
-            <p className="text-xs text-warm-text-light mb-3 font-inter">
-              Example: "Semaglutide for Alzheimer's disease" or "Repurpose metformin for cancer treatment"
-            </p>
+      {/* 2. INPUT PANEL */}
+      <CalmCard className={`mb-8 transition-opacity duration-500 ${consoleState === 'COMPLETED' ? 'opacity-75' : 'opacity-100'}`}>
+        <div className="mb-4">
+           <label className="block text-xs font-semibold text-warm-text-subtle uppercase tracking-wider mb-2 font-inter">
+             Research Hypothesis
+           </label>
+           <CalmInput 
+             value={query}
+             onChange={setQuery}
+             placeholder="e.g. Semaglutide for Alzheimer's disease"
+             multiline
+             rows={3}
+             disabled={consoleState !== 'IDLE'}
+             className="text-lg font-inter"
+           />
+        </div>
+
+        {consoleState === 'IDLE' && (
+          <div className="flex justify-end">
+            <CalmButton 
+              onClick={handleAnalyze}
+              disabled={!query.trim()}
+              className="flex items-center gap-2"
+            >
+              <Sparkles className="w-4 h-4" />
+              Analyze Research Opportunity
+            </CalmButton>
           </div>
-        </div>
-        <CalmInput
-          value={query}
-          onChange={setQuery}
-          placeholder="Enter drug-disease hypothesis..."
-          multiline
-          rows={4}
-          className="mb-6"
-          disabled={isExecuting}
-        />
-        <div className="flex items-center gap-3">
-          <CalmButton
-            onClick={handleSubmit}
-            disabled={isExecuting || !query.trim()}
-            className="flex items-center gap-2 shadow-md hover:shadow-lg transition-shadow"
-          >
-            {isSubmitting ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Submitting...
-              </>
-            ) : (
-              <>
-                <Sparkles className="w-4 h-4" />
-                Analyze Hypothesis
-              </>
-            )}
-          </CalmButton>
-          {query.trim() && !isExecuting && (
-            <span className="text-xs text-warm-text-subtle font-inter">
-              {query.trim().length} characters
-            </span>
-          )}
-        </div>
+        )}
+
+        {error && (
+          <div className="mt-4 p-3 bg-rose-50 border border-rose-100 rounded-md flex items-start gap-3">
+             <AlertCircle className="w-5 h-5 text-rose-600 flex-shrink-0" />
+             <p className="text-sm text-rose-700 font-inter">{error}</p>
+          </div>
+        )}
       </CalmCard>
 
-      {/* Submission Error */}
-      {submitError && (
-        <CalmCard className="mb-8 border-2 border-red-200 bg-red-50">
-          <div className="flex items-start gap-3 text-red-700">
-            <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
-            <div>
-              <p className="font-semibold font-inter mb-1">Submission Failed</p>
-              <p className="text-sm font-inter">{submitError}</p>
-            </div>
-          </div>
-        </CalmCard>
-      )}
-
-      {/* ZONE B: Execution Timeline - Appears After Submission */}
-      {executionStarted && executionStatus && (
+      {/* 3. AGENT EXECUTION PANEL (Visible during & after execution) */}
+      {(consoleState === 'EXECUTING' || consoleState === 'COMPLETED') && (
         <div className="mb-8 animate-calm-fade-in">
-          <ExecutionTimeline status={executionStatus} />
+          <h3 className="text-xs font-semibold text-warm-text-subtle uppercase tracking-wider mb-4 font-inter">
+            System Orchestration
+          </h3>
+          
+          <CalmCard className="p-0 overflow-hidden border border-warm-border">
+             {AGENTS.map((agent, idx) => {
+               const status = getAgentStatus(agent.id);
+               const detail = executionData?.agent_details?.find(d => d.agent_id === agent.id);
+               const isLast = idx === AGENTS.length - 1;
+
+               let statusColor = "text-warm-text-light";
+               let statusIcon = <div className="w-2 h-2 rounded-full bg-warm-divider" />;
+               let statusBg = "bg-white";
+
+               if (status === 'running') {
+                 statusColor = "text-amber-600";
+                 statusIcon = <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />;
+                 statusBg = "bg-amber-50/30";
+               } else if (status === 'completed') {
+                 statusColor = "text-sage-700";
+                 statusIcon = <CheckCircle2 className="w-4 h-4 text-sage-600" />;
+                 statusBg = "bg-sage-50/30";
+               } else if (status === 'failed') {
+                 statusColor = "text-rose-700";
+                 statusIcon = <AlertCircle className="w-4 h-4 text-rose-600" />;
+                 statusBg = "bg-rose-50/30";
+               }
+
+               return (
+                 <div key={agent.id} className={`flex items-center justify-between p-4 ${statusBg} ${!isLast ? 'border-b border-warm-divider' : ''}`}>
+                   <div className="flex items-center gap-4">
+                     <div className={`p-2 rounded-lg bg-white border border-warm-divider text-warm-text-subtle`}>
+                       <agent.icon className="w-4 h-4" />
+                     </div>
+                     <div>
+                       <p className="text-sm font-semibold text-warm-text font-inter">{agent.label}</p>
+                       <p className="text-xs text-warm-text-light font-inter capitalize">
+                         {status === 'pending' ? 'Waiting...' : status}
+                       </p>
+                     </div>
+                   </div>
+                   
+                   <div className="flex items-center gap-6 text-right">
+                     {status === 'completed' && detail && (
+                       <>
+                         <div className="hidden sm:block">
+                           <p className="text-xs text-warm-text-subtle font-inter">Duration</p>
+                           <p className="text-sm font-medium text-warm-text font-inter">
+                             {detail.duration_ms ? `${(detail.duration_ms / 1000).toFixed(1)}s` : '-'}
+                           </p>
+                         </div>
+                         <div className="min-w-[80px]">
+                           <p className="text-xs text-warm-text-subtle font-inter">Results</p>
+                           <p className="text-sm font-medium text-warm-text font-inter">
+                             {detail.result_count ?? 0}
+                           </p>
+                         </div>
+                       </>
+                     )}
+                     <div className="w-6 flex justify-center">
+                       {statusIcon}
+                     </div>
+                   </div>
+                 </div>
+               );
+             })}
+             
+             {/* Total System Time Footer */}
+             {executionData?.execution_time_ms && (
+               <div className="px-4 py-2 bg-warm-bg-alt border-t border-warm-divider flex justify-end">
+                 <p className="text-xs text-warm-text-subtle font-inter flex items-center gap-2">
+                   <Clock className="w-3 h-3" />
+                   Total Execution Time: {(executionData.execution_time_ms / 1000).toFixed(1)}s
+                 </p>
+               </div>
+             )}
+          </CalmCard>
         </div>
       )}
 
-      {/* Agent Summaries - progressively reveal as agents complete */}
-      {executionStarted && executionStatus && initialQueryResponse?.insights && (
-        <div className="space-y-4 mb-8 animate-calm-fade-in">
-          <h2 className="text-2xl font-bold text-warm-text font-inter">Agent Summaries</h2>
-          {executionStatus.agent_details
-            .filter((d) => d.status === 'completed' || d.status === 'failed')
-            .map((detail) => {
-              const insight = initialQueryResponse!.insights.find(
-                (i) => i.agent.toLowerCase() === detail.agent_id.toLowerCase()
-              );
-              return (
-                <CalmCard key={detail.agent_id} className="border border-warm-border">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="text-sm uppercase tracking-wide text-warm-text-subtle font-inter">
-                          {detail.agent_id}
-                        </span>
-                        <span className="text-xs px-2 py-0.5 rounded bg-terracotta-50 text-terracotta-700 border border-terracotta-200">
-                          {detail.status}
-                        </span>
-                      </div>
-                      {insight ? (
-                        <>
-                          <p className="text-warm-text font-inter mb-2">{insight.finding}</p>
-                          <div className="text-sm text-warm-text-subtle font-inter">
-                            <span>Confidence: {Math.round(insight.confidence * 100)}%</span>
-                            {insight.total_trials !== undefined && (
-                              <span className="ml-4">Trials: {insight.total_trials}</span>
-                            )}
-                          </div>
-                        </>
-                      ) : (
-                        <p className="text-warm-text-subtle font-inter">No summary available for this agent.</p>
-                      )}
-                    </div>
-                  </div>
-                </CalmCard>
-              );
-            })}
-        </div>
-      )}
+      {/* 4. ROS RESULT PANEL (State 3) */}
+      {consoleState === 'COMPLETED' && rosData && (
+        <div className="animate-calm-fade-in space-y-8">
+          
+          <div className="flex items-center justify-between">
+            <h3 className="text-xs font-semibold text-warm-text-subtle uppercase tracking-wider font-inter">
+              Research Opportunity Score
+            </h3>
+            <span className="text-xs text-warm-text-light font-inter">Generated {new Date().toLocaleTimeString()}</span>
+          </div>
 
-      {/* Polling Error */}
-      {pollingError && executionStarted && (
-        <CalmCard className="mb-8 border-2 border-amber-200 bg-amber-50">
-          <div className="flex items-start gap-3 text-amber-700">
-            <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+          <ROSResultCard rosData={rosData} />
+
+          {/* 5. EXPLANATION PANEL */}
+          <div className="grid md:grid-cols-3 gap-6">
+            <div className="md:col-span-2">
+               <h3 className="text-xs font-semibold text-warm-text-subtle uppercase tracking-wider mb-3 font-inter">
+                 Executive Summary
+               </h3>
+               <CalmCard className="h-full">
+                 <p className="text-sm text-warm-text leading-relaxed font-inter">
+                   {/* Fallback explanation if API doesn't provide one directly in this view, 
+                       though ROSResultCard usually handles it. We render the breakdown text here if needed 
+                       or a placeholder for specific abstract-like text if the user wants strictly separate.
+                       Given ROSResultCard has explanation, we might be duplicating. 
+                       Let's check the constraint: "Explanation Panel ... Plain-language explanation from API"
+                       The ROS endpoint returns `explanation`. ROSResultCard displays it.
+                       I will suppress this separate card if ROSResultCard covers it, 
+                       OR show the `conflict_penalty` explanation here if it's interesting.
+                   */}
+                   {rosData.explanation || "No summary available."}
+                 </p>
+               </CalmCard>
+            </div>
+            
+            {/* 6. NAVIGATION AFFORDANCES */}
             <div>
-              <p className="font-semibold font-inter mb-1">Status Update Timeout</p>
-              <p className="text-sm font-inter">
-                Still monitoring execution. This can take a few minutes for complex analyses.
-              </p>
+               <h3 className="text-xs font-semibold text-warm-text-subtle uppercase tracking-wider mb-3 font-inter">
+                 Deep Dive
+               </h3>
+               <div className="space-y-3">
+                 <CalmButton 
+                   variant="secondary" 
+                   className="w-full justify-between group"
+                   onClick={() => navigate('/timeline')}
+                 >
+                   <span>Evidence Timeline</span>
+                   <ArrowRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" />
+                 </CalmButton>
+                 <CalmButton 
+                   variant="secondary" 
+                   className="w-full justify-between group"
+                   onClick={() => navigate('/graph')}
+                 >
+                   <span>Knowledge Graph</span>
+                   <Database className="w-4 h-4 opacity-50" />
+                 </CalmButton>
+                 <CalmButton 
+                   variant="secondary" 
+                   className="w-full justify-between group"
+                   onClick={() => navigate('/conflicts')}
+                 >
+                   <span>Conflict Analysis</span>
+                   <AlertCircle className="w-4 h-4 opacity-50" />
+                 </CalmButton>
+               </div>
             </div>
           </div>
-        </CalmCard>
-      )}
-
-      {/* ZONE C: Results - Progressive Disclosure */}
-      {resultsLoaded && (
-        <div className="space-y-6 animate-calm-fade-in">
-          {/* ROS Score Card */}
-          {rosData && <ROSResultCard rosData={rosData} />}
-
-          {/* Conflict Analysis */}
-          {conflictData && <ConflictSummary conflict={conflictData} />}
-
-          {/* Evidence Timeline Preview */}
-          {evidenceData && <EvidenceTimelinePreview timeline={evidenceData} limit={5} />}
-
-
-          {/* Completion Message */}
-          {isPolling === false && (
-            <CalmCard className="border-2 border-emerald-200 bg-emerald-50">
-              <div className="flex items-center gap-3 text-emerald-700">
-                <CheckCircle2 className="w-5 h-5 flex-shrink-0" />
-                <div>
-                  <p className="font-semibold font-inter">Analysis Complete</p>
-                  <p className="text-sm font-inter">
-                    All agents have finished processing. Results are ready for review.
-                  </p>
-                </div>
-              </div>
-            </CalmCard>
-          )}
+          
+          {/* Final Status Banner */}
+          <div className="flex justify-center pt-8 pb-12">
+            <p className="text-warm-text-subtle text-sm font-inter">
+              Analysis stable. System idle.
+            </p>
+          </div>
         </div>
       )}
     </PageContainer>
