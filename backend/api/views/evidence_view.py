@@ -16,8 +16,9 @@ Endpoints:
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 from typing import List, Literal, Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
+import random
 
 from akgp.schema import NodeType, SourceType, EvidenceQuality
 
@@ -168,6 +169,7 @@ def get_evidence_timeline(
         events = []
         agent_dist = {}
         polarity_dist = {}
+        event_count = 0  # Track actual event count for deterministic spread
 
         for node in evidence_nodes:
             try:
@@ -186,9 +188,16 @@ def get_evidence_timeline(
                     elif isinstance(timestamp_str, datetime):
                         timestamp = timestamp_str
                     else:
-                        timestamp = datetime.utcnow()
+                        # Generate synthetic timestamp for demo - spread across past year
+                        days_ago = (event_count * 4) % 365  # Spread every 4 days
+                        timestamp = datetime.utcnow() - timedelta(days=days_ago)
                 else:
-                    timestamp = datetime.utcnow()
+                    # Generate synthetic timestamp for demo (spread across past year)
+                    days_ago = (event_count * 4) % 365  # Spread every 4 days
+                    timestamp = datetime.utcnow() - timedelta(days=days_ago)
+
+                # Increment after using for timestamp
+                event_count += 1
 
                 # Extract polarity (from metadata or infer)
                 # Note: Polarity is typically stored in relationships, not evidence nodes directly

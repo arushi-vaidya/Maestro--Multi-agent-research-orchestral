@@ -69,7 +69,8 @@ module.exports = {
           subtle: '#A8A39F',
         },
 
-        // Dividers
+        // Dividers and borders
+        'warm-border': 'rgba(58, 54, 52, 0.12)',
         'warm-divider': 'rgba(58, 54, 52, 0.08)', // Hairline, low-opacity warm gray
       },
       // Font family
