@@ -11,6 +11,13 @@ export const useExecutionStatusPoller = (shouldPoll: boolean, intervalMs: number
   const [isPolling, setIsPolling] = useState(shouldPoll);
   const [error, setError] = useState<string | null>(null);
 
+  // Sync isPolling when shouldPoll changes
+  useEffect(() => {
+    if (shouldPoll) {
+      setIsPolling(true);
+    }
+  }, [shouldPoll]);
+
   useEffect(() => {
     if (!shouldPoll || !isPolling) return;
 

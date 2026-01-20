@@ -50,6 +50,7 @@ export const Hypothesis: React.FC = () => {
   // Update execution status when polling returns data
   useEffect(() => {
     if (status) {
+      console.log('[Hypothesis] Execution status update:', status);
       setExecutionStatus(status);
     }
   }, [status]);
@@ -59,30 +60,62 @@ export const Hypothesis: React.FC = () => {
     if (!executionStatus) return;
 
     // Check if all agents are done
-    const totalTriggered = executionStatus.agents_triggered?.length ?? 0;
-    const totalCompleted = (executionStatus.agents_completed?.length ?? 0) + (executionStatus.agents_failed?.length ?? 0);
+    const totalTriggered = Array.isArray(executionStatus.agents_triggered) 
+      ? executionStatus.agents_triggered.length 
+      : 0;
+    const totalCompleted = (Array.isArray(executionStatus.agents_completed) ? executionStatus.agents_completed.length : 0) + 
+                          (Array.isArray(executionStatus.agents_failed) ? executionStatus.agents_failed.length : 0);
     const allAgentsDone = totalTriggered > 0 && totalCompleted >= totalTriggered;
 
-    if (allAgentsDone && !resultsLoaded && !isPolling) {
+    console.log('[Hypothesis] Execution check:', {
+      agents_triggered: executionStatus.agents_triggered,
+      agents_completed: executionStatus.agents_completed,
+      agents_failed: executionStatus.agents_failed,
+      totalTriggered,
+      totalCompleted,
+      allAgentsDone,
+      resultsLoaded,
+    });
+
+    // Removed !isPolling condition - fetch results immediately when agents complete
+    if (allAgentsDone && !resultsLoaded) {
+      console.log('[Hypothesis] All agents done, fetching results...');
       fetchResults();
     }
-  }, [executionStatus, isPolling, resultsLoaded]);
+  }, [executionStatus, resultsLoaded]);
 
   const fetchResults = async () => {
     try {
+      console.log('[Hypothesis] Fetching results from API facade...');
+      
       // Fetch all results in parallel
       const [ros, conflict, evidence] = await Promise.all([
-        api.getROSLatest().catch(() => null),
-        api.getConflictExplanation().catch(() => null),
-        api.getEvidenceTimeline().catch(() => null),
+        api.getROSLatest().catch((err) => {
+          console.error('[Hypothesis] Failed to fetch ROS:', err);
+          return null;
+        }),
+        api.getConflictExplanation().catch((err) => {
+          console.error('[Hypothesis] Failed to fetch conflicts:', err);
+          return null;
+        }),
+        api.getEvidenceTimeline().catch((err) => {
+          console.error('[Hypothesis] Failed to fetch evidence:', err);
+          return null;
+        }),
       ]);
 
-      if (ros) setRosData(ros);
+      console.log('[Hypothesis] API responses:', { ros, conflict, evidence });
+
+      if (ros) {
+        console.log('[Hypothesis] Setting ROS data:', ros);
+        setRosData(ros);
+      }
       if (conflict) setConflictData(conflict);
       if (evidence) setEvidenceData(evidence);
       setResultsLoaded(true);
+      console.log('[Hypothesis] Results loaded successfully');
     } catch (error) {
-      console.error('Failed to fetch results:', error);
+      console.error('[Hypothesis] Failed to fetch results:', error);
     }
   };
 
@@ -97,16 +130,19 @@ export const Hypothesis: React.FC = () => {
     setConflictData(null);
     setEvidenceData(null);
     setResultsLoaded(false);
+    setInitialQueryResponse(null);
 
     try {
       // Submit query and capture initial response (may include insights)
+      console.log('[Hypothesis] Submitting query:', query);
       const resp = await api.submitQuery(query);
+      console.log('[Hypothesis] Query submitted successfully, response:', resp);
       setInitialQueryResponse(resp);
 
       // Start execution polling
       setExecutionStarted(true);
     } catch (error: any) {
-      console.error('Query submission error:', error);
+      console.error('[Hypothesis] Query submission error:', error);
       setSubmitError(
         error?.response?.data?.detail || 'Failed to submit hypothesis. Please try again.'
       );
