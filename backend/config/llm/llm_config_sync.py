@@ -8,15 +8,23 @@ import requests
 from typing import Optional
 import logging
 import time
+import random
 
 logger = logging.getLogger(__name__)
+
+def _backoff_sleep(attempt: int, base: float = 1.0, cap: float = 8.0) -> None:
+    """Sleep with exponential backoff + jitter to ease rate limits."""
+    delay = min(cap, base * (2 ** attempt))
+    jitter = random.uniform(0, delay / 2)
+    time.sleep(delay + jitter)
+
 
 def generate_llm_response(
     prompt: str,
     system_prompt: Optional[str] = None,
     temperature: float = 0.7,
     max_tokens: int = 2000,
-    max_retries: int = 2  # NEW: Add retry parameter
+    max_retries: int = 4  # Slightly higher to absorb transient 429s
 ) -> str:
     """
     Generate LLM response using available APIs
@@ -41,13 +49,13 @@ def generate_llm_response(
             try:
                 return _generate_groq(prompt, system_prompt, temperature, max_tokens, groq_api_key)
             except requests.exceptions.HTTPError as e:
-                if e.response.status_code == 429 and attempt < max_retries - 1:
-                    wait_time = (2 ** attempt)  # Exponential backoff: 1s, 2s, 4s...
-                    logger.warning(f"Groq rate limit hit (attempt {attempt + 1}/{max_retries}), retrying in {wait_time}s...")
-                    time.sleep(wait_time)
+                status = e.response.status_code if e.response else "unknown"
+                if status == 429 and attempt < max_retries - 1:
+                    logger.warning(f"Groq rate limit hit (attempt {attempt + 1}/{max_retries}), backing off...")
+                    _backoff_sleep(attempt)
                     continue
                 else:
-                    logger.warning(f"Groq API failed: {e}, trying Gemini...")
+                    logger.warning("Groq API failed (status %s): %s, trying Gemini...", status, e)
                     break
             except Exception as e:
                 logger.warning(f"Groq API failed: {e}, trying Gemini...")
@@ -59,13 +67,18 @@ def generate_llm_response(
             try:
                 return _generate_gemini(prompt, system_prompt, temperature, max_tokens, gemini_api_key)
             except requests.exceptions.HTTPError as e:
-                if e.response.status_code == 429 and attempt < max_retries - 1:
-                    wait_time = (2 ** attempt)
-                    logger.warning(f"Gemini rate limit hit (attempt {attempt + 1}/{max_retries}), retrying in {wait_time}s...")
-                    time.sleep(wait_time)
+                status = e.response.status_code if e.response else "unknown"
+                body = e.response.text[:400] if e.response and e.response.text else ""
+                if status == 429 and attempt < max_retries - 1:
+                    logger.warning(
+                        "Gemini rate limit hit (attempt %s/%s), backing off...",
+                        attempt + 1,
+                        max_retries,
+                    )
+                    _backoff_sleep(attempt)
                     continue
                 else:
-                    logger.error(f"Gemini API failed: {e}")
+                    logger.error("Gemini API failed (status %s): %s", status, body)
                     raise
             except Exception as e:
                 logger.error(f"Gemini API failed: {e}")
@@ -114,8 +127,9 @@ def _generate_gemini(
     max_tokens: int,
     api_key: str
 ) -> str:
-    """Generate using Gemini API"""
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key={api_key}"
+    """Generate using Gemini API (stable model, quota-friendly)."""
+    model = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
 
     # Combine system prompt with user prompt for Gemini
     full_prompt = prompt
@@ -128,7 +142,7 @@ def _generate_gemini(
         }],
         "generationConfig": {
             "temperature": temperature,
-            "maxOutputTokens": min(max_tokens, 8192)  # Gemini 2.0 limit: 8192 tokens
+            "maxOutputTokens": min(max_tokens, 8192)  # Keep under common limits
         }
     }
 
