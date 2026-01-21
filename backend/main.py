@@ -20,6 +20,19 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Custom filter to suppress expected 404s from polling endpoints
+class SuppressPollingErrors(logging.Filter):
+    def filter(self, record):
+        # Suppress 404s for polling endpoints (expected during query execution)
+        message = record.getMessage()
+        if '404 Not Found' in message and ('/api/execution/status' in message or '/api/ros/latest' in message):
+            return False
+        return True
+
+# Apply filter to uvicorn access logger
+uvicorn_logger = logging.getLogger("uvicorn.access")
+uvicorn_logger.addFilter(SuppressPollingErrors())
+
 # Lifespan event handler for startup and shutdown
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -186,5 +199,7 @@ if __name__ == "__main__":
         "main:app",
         host="0.0.0.0",
         port=port,
-        reload=True
+        reload=True,
+        access_log=True,
+        log_level="info"
     )
