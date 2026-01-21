@@ -315,19 +315,19 @@ class MasterAgent:
         from datetime import datetime
 
         logger.info("="*60)
-        logger.info(f"🎼 Master Agent processing query: {query[:100]}...")
+        logger.info(f"Master Agent processing query: {query[:100]}...")
         logger.info("="*60)
-        print(f"\n🎼 Master Agent processing query: {query[:100]}...")
+        print(f"\nMaster Agent processing query: {query[:100]}...")
 
         # STEP 7: LangGraph orchestration (if enabled)
         if USE_LANGGRAPH:
-            logger.info("🎯 Using LangGraph orchestration (STEP 7)")
-            print("🎯 Using LangGraph orchestration (STEP 7)")
+            logger.info("Using LangGraph orchestration (STEP 7)")
+            print("Using LangGraph orchestration (STEP 7)")
             from graph_orchestration.workflow import execute_query
             return execute_query(query)
 
         # LEGACY: Sequential orchestration
-        logger.info("🎯 Using legacy sequential orchestration")
+        logger.info("Using legacy sequential orchestration")
         print("🎯 Using legacy sequential orchestration")
 
         # Step 1: Classify query to determine which agents to run
@@ -573,22 +573,55 @@ class MasterAgent:
             try:
                 if i <= 5:  # Log first 5 for debugging
                     logger.info(f"   Fetching trial {i}/{trial_count}: {trial['nct_id']}")
+                trial_details = self.clinical_agent.get_trial_details(trial['nct_id'])
                 trial_summary = self.clinical_agent.get_trial_summary(trial['nct_id'])
+                
+                # Extract full trial data from API response
+                protocol = trial_details.get('protocolSection', {})
+                status_module = protocol.get('statusModule', {})
+                design_module = protocol.get('designModule', {})
+                
+                # Get trial status and date
+                trial_status = status_module.get('overallStatus', 'Unknown')
+                start_date_str = status_module.get('startDateStruct', {}).get('date', '2024')
+                
+                # Get phases
+                phases = design_module.get('phases', [])
+                phase_str = ', '.join(phases) if phases else 'Unknown'
+                
+                # Get enrollment
+                enrollment_info = design_module.get('enrollmentInfo', {})
+                enrollment_count = enrollment_info.get('count', 0)
+                
+                # Map ClinicalTrials.gov status to ROS-compatible status
+                ros_status = trial_status
+                if 'RECRUITING' in trial_status or 'ACTIVE' in trial_status:
+                    ros_status = 'recruiting'
+                elif 'COMPLETED' in trial_status:
+                    ros_status = 'completed'
+                elif 'TERMINATED' in trial_status or 'WITHDRAWN' in trial_status:
+                    ros_status = 'terminated'
+                else:
+                    ros_status = 'other'
+                
                 references.append({
-                    "type": "clinical-trial",
+                    "type": "clinical_trial",  # CRITICAL FIX: underscore not hyphen
                     "title": trial_summary['title'],
-                    "source": f"ClinicalTrials.gov {trial_summary['nct_id']}",
-                    "date": "2024",
-                    "url": f"https://clinicaltrials.gov/study/{trial_summary['nct_id']}",
+                    "source": f"ClinicalTrials.gov {trial['nct_id']}",
+                    "date": start_date_str,  # CRITICAL FIX: actual trial start date
+                    "url": f"https://clinicaltrials.gov/study/{trial['nct_id']}",
                     "relevance": 90,
                     "agentId": "clinical",
-                    "nct_id": trial_summary['nct_id'],
-                    "summary": trial_summary['summary']
+                    "nct_id": trial['nct_id'],
+                    "summary": trial_summary['summary'],
+                    "status": ros_status,  # CRITICAL FIX: add status for recency calculation
+                    "phase": phase_str,  # CRITICAL FIX: add phase for novelty calculation
+                    "enrollment": enrollment_count  # Additional info for future scoring
                 })
             except Exception as e:
                 logger.warning(f"Failed to fetch summary for {trial['nct_id']}: {e}")
                 references.append({
-                    "type": "clinical-trial",
+                    "type": "clinical_trial",  # CRITICAL FIX: underscore not hyphen
                     "title": trial['title'],
                     "source": f"ClinicalTrials.gov {trial['nct_id']}",
                     "date": "2024",
@@ -596,7 +629,10 @@ class MasterAgent:
                     "relevance": 85,
                     "agentId": "clinical",
                     "nct_id": trial['nct_id'],
-                    "summary": "Summary unavailable"
+                    "summary": "Summary unavailable",
+                    "status": "unknown",  # CRITICAL FIX: add status
+                    "phase": "Unknown",  # CRITICAL FIX: add phase
+                    "enrollment": 0
                 })
 
         logger.info(f"✅ Clinical Agent wrapper completed: {len(references)} trial references created")
@@ -660,7 +696,9 @@ class MasterAgent:
                 "assignee": ', '.join(assignees[:2]) if assignees else 'Unknown',
                 "citations": patent.get('citedby_patent_count', 0),
                 "summary": patent.get('patent_abstract', 'No abstract available')[:300] + '...'
-                    if patent.get('patent_abstract') else 'No abstract available'
+                    if patent.get('patent_abstract') else 'No abstract available',
+                "status": "issued",  # Patents are issued
+                "phase": "Patent"  # Use 'Patent' as phase for patent references
             })
 
         logger.info(f"✅ Patent Agent wrapper completed: {len(references)} patent references created")
@@ -704,7 +742,9 @@ class MasterAgent:
                 "authors": authors,
                 "journal": pub.get('journal', 'Unknown journal'),
                 "summary": pub.get('abstract', 'No abstract available')[:300] + '...'
-                    if pub.get('abstract') else 'No abstract available'
+                    if pub.get('abstract') else 'No abstract available',
+                "status": "published",  # Literature is published
+                "phase": "Review"  # Use 'Review' as phase for literature references
             })
 
         logger.info(f"✅ Literature Agent completed: {len(references)} publication references created")
@@ -830,7 +870,9 @@ class MasterAgent:
                     "relevance": relevance,
                     "agentId": "market",
                     "summary": web_result.get('snippet', ''),
-                    "domain_tier": domain_tier
+                    "domain_tier": domain_tier,
+                    "status": "published",  # Market reports are published
+                    "phase": "Market"  # Use 'Market' as phase for market references
                 })
             for rag_result in market_data.get('rag_results', []):
                 market_refs.append({
@@ -841,7 +883,9 @@ class MasterAgent:
                     "url": "",
                     "relevance": 90,
                     "agentId": "market",
-                    "summary": rag_result.get('content', '')[:500]
+                    "summary": rag_result.get('content', '')[:500],
+                    "status": "published",  # Market reports are published
+                    "phase": "Market"  # Use 'Market' as phase
                 })
             references.extend(market_refs)
 

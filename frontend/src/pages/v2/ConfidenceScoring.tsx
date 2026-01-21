@@ -263,7 +263,7 @@ export const ConfidenceScoring: React.FC = () => {
       <div className="grid lg:grid-cols-12 gap-8">
         {/* Score Overview */}
         <div className="lg:col-span-4">
-          <CalmCard className="sticky top-24">
+          <CalmCard className="sticky top-24 border-2 border-blue-200 bg-blue-50/30">
             {/* Main Score */}
             <div className="text-center mb-6 pb-6 border-b border-warm-divider">
               <p className="text-sm font-medium text-warm-text-light uppercase tracking-wider mb-4">
@@ -335,7 +335,7 @@ export const ConfidenceScoring: React.FC = () => {
         <div className="lg:col-span-8">
           <div className="space-y-6">
             {/* Score Breakdown */}
-            <CalmCard>
+            <CalmCard className="border-2 border-purple-200 bg-purple-50/20">
               <h3 className="text-sm font-medium text-warm-text-light uppercase tracking-wider mb-6">
                 Contributing Factors
               </h3>
@@ -346,7 +346,7 @@ export const ConfidenceScoring: React.FC = () => {
                     <div className="flex items-start justify-between mb-2">
                       <span className="font-medium text-warm-text">{factor.name}</span>
                       <span className={`font-semibold ${
-                        factor.weight > 0 ? 'text-sage-600' : 'text-terracotta-600'
+                        factor.weight > 0 ? 'text-emerald-600' : 'text-orange-600'
                       }`}>
                         {factor.weight > 0 ? '+' : ''}{factor.weight.toFixed(1)}
                       </span>
@@ -356,7 +356,7 @@ export const ConfidenceScoring: React.FC = () => {
                     {/* Visual bar */}
                     <div className="mt-2 h-2 bg-warm-surface-alt rounded-full overflow-hidden">
                       <div
-                        className={`h-full ${factor.weight > 0 ? 'bg-sage-500' : 'bg-terracotta-400'}`}
+                        className={`h-full ${factor.weight > 0 ? 'bg-emerald-500' : 'bg-orange-500'}`}
                         style={{ width: `${Math.min(Math.abs(factor.weight) * 10, 100)}%` }}
                       />
                     </div>
@@ -379,7 +379,7 @@ export const ConfidenceScoring: React.FC = () => {
             </CalmCard>
 
             {/* Uncertainty Sources */}
-            <CalmCard>
+            <CalmCard className="border-2 border-rose-200 bg-rose-50/20">
               <h3 className="text-sm font-medium text-warm-text-light uppercase tracking-wider mb-6">
                 Sources of Uncertainty
               </h3>
@@ -421,7 +421,7 @@ export const ConfidenceScoring: React.FC = () => {
             </CalmCard>
 
             {/* Evidence Summary */}
-            <CalmCard>
+            <CalmCard className="border-2 border-teal-200 bg-teal-50/20">
               <h3 className="text-sm font-medium text-warm-text-light uppercase tracking-wider mb-6">
                 Evidence by Agent
               </h3>
@@ -449,30 +449,30 @@ export const ConfidenceScoring: React.FC = () => {
                     {/* Stacked bar */}
                     <div className="h-3 bg-warm-surface-alt rounded-full overflow-hidden flex">
                       <div
-                        className="bg-sage-500 h-full"
+                        className="bg-emerald-500 h-full"
                         style={{ width: `${(item.positive / item.count) * 100}%` }}
                       />
                       <div
-                        className="bg-warm-surface-alt h-full"
+                        className="bg-yellow-300 h-full"
                         style={{ width: `${(item.neutral / item.count) * 100}%` }}
                       />
                       <div
-                        className="bg-terracotta-400 h-full"
+                        className="bg-orange-500 h-full"
                         style={{ width: `${(item.negative / item.count) * 100}%` }}
                       />
                     </div>
 
                     <div className="flex items-center gap-4 mt-2 text-xs text-warm-text-light">
                       <span className="flex items-center gap-1">
-                        <span className="w-2 h-2 rounded-full bg-sage-500" />
+                        <span className="w-2 h-2 rounded-full bg-emerald-500" />
                         {item.positive} positive
                       </span>
                       <span className="flex items-center gap-1">
-                        <span className="w-2 h-2 rounded-full bg-warm-surface-alt" />
+                        <span className="w-2 h-2 rounded-full bg-yellow-300" />
                         {item.neutral} neutral
                       </span>
                       <span className="flex items-center gap-1">
-                        <span className="w-2 h-2 rounded-full bg-terracotta-400" />
+                        <span className="w-2 h-2 rounded-full bg-orange-500" />
                         {item.negative} negative
                       </span>
                     </div>

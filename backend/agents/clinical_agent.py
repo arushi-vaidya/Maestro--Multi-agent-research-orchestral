@@ -102,7 +102,7 @@ class ClinicalAgent:
 
         return keywords.strip()
 
-    def search_trials(self, keywords: str, page_size: int = 100) -> dict:
+    def search_trials(self, keywords: str, page_size: int = 50) -> dict:
         """
         Search clinical trials using ClinicalTrials.gov API v2
 
@@ -284,128 +284,73 @@ Trial {nct_id}:
                 logger.warning(f"Error processing trial for stats: {e}")
                 continue
         
-        # Build comprehensive structured summary
+        # Build concise formatted summary with HTML-style bold
         summary_parts = []
         
-        summary_parts.append("COMPREHENSIVE CLINICAL TRIALS ANALYSIS")
-        summary_parts.append("")
-        summary_parts.append("")
+        summary_parts.append("**COMPREHENSIVE CLINICAL TRIALS ANALYSIS**\n")
         
-        # 1. Overview
-        summary_parts.append("1. OVERVIEW")
-        summary_parts.append("")
-        summary_parts.append(f"* Total Clinical Trials Found: {total_trials}")
-        summary_parts.append(f"* Search Keywords: {keywords}")
-        summary_parts.append(f"* Data Source: ClinicalTrials.gov Database")
-        summary_parts.append("")
-        summary_parts.append("This analysis encompasses clinical trials focused on " + keywords + 
-                           f", representing current research efforts and therapeutic development in this area.")
-        summary_parts.append("")
-        summary_parts.append("")
-        
-        # 2. Therapeutic Areas
-        summary_parts.append("2. THERAPEUTIC AREAS AND CONDITIONS")
-        summary_parts.append("")
-        if conditions:
-            summary_parts.append("* Primary Conditions Being Studied:")
-            for cond, count in sorted(conditions.items(), key=lambda x: x[1], reverse=True)[:10]:
-                summary_parts.append(f"  - {cond}: {count} trial(s)")
-        else:
-            summary_parts.append("* Condition data not fully available in retrieved trials")
-        summary_parts.append("")
-        summary_parts.append("")
-        
-        # 3. Intervention Approaches
-        summary_parts.append("3. INTERVENTION MECHANISMS AND APPROACHES")
-        summary_parts.append("")
-        if interventions:
-            summary_parts.append("* Intervention Types Being Investigated:")
-            for int_type, count in sorted(interventions.items(), key=lambda x: x[1], reverse=True):
-                summary_parts.append(f"  - {int_type}: {count} trial(s)")
-        summary_parts.append("")
-        summary_parts.append(f"The trials employ diverse therapeutic modalities targeting {keywords}, " +
-                           "including novel and established approaches.")
-        summary_parts.append("")
-        summary_parts.append("")
-        
-        # 4. Clinical Trial Phases
-        summary_parts.append("4. CLINICAL TRIAL PHASES AND DEVELOPMENT PIPELINE")
-        summary_parts.append("")
-        if phases:
-            summary_parts.append("* Phase Distribution:")
-            for phase, count in sorted(phases.items()):
-                percentage = (count / total_trials * 100) if total_trials > 0 else 0
-                summary_parts.append(f"  - {phase}: {count} trials ({percentage:.1f}%)")
-        else:
-            summary_parts.append("* Phase information not available for all trials")
-        summary_parts.append("")
-        summary_parts.append("")
-        
-        # 5. Trial Status
-        summary_parts.append("5. KEY FINDINGS AND PATTERNS")
-        summary_parts.append("")
-        summary_parts.append("* Trial Status Distribution:")
-        if statuses:
-            for status, count in sorted(statuses.items(), key=lambda x: x[1], reverse=True):
-                percentage = (count / total_trials * 100) if total_trials > 0 else 0
-                summary_parts.append(f"  - {status}: {count} trials ({percentage:.1f}%)")
-        summary_parts.append("")
+        # 1. Overview - More concise
+        summary_parts.append("**1. OVERVIEW:**")
+        summary_parts.append(f"Found **{total_trials} trials** for **{keywords}** from ClinicalTrials.gov. ")
         active_count = sum(count for status, count in statuses.items() 
                           if status in ['RECRUITING', 'ACTIVE_NOT_RECRUITING', 'ENROLLING_BY_INVITATION'])
-        summary_parts.append(f"* {active_count} trials are currently active, indicating ongoing research activity")
-        summary_parts.append("")
-        summary_parts.append("")
+        summary_parts.append(f"**{active_count} trials actively recruiting**, indicating strong ongoing research.\n")
         
-        # 6. Methodological Approaches
-        summary_parts.append("6. METHODOLOGICAL APPROACHES")
-        summary_parts.append("")
-        if study_types:
-            summary_parts.append("* Study Design Types:")
-            for st, count in sorted(study_types.items(), key=lambda x: x[1], reverse=True):
-                summary_parts.append(f"  - {st}: {count} trial(s)")
-        summary_parts.append("")
-        summary_parts.append("")
+        # 2. Therapeutic Areas - Condensed
+        summary_parts.append("**2. THERAPEUTIC AREAS:**")
+        if conditions:
+            top_conditions = sorted(conditions.items(), key=lambda x: x[1], reverse=True)[:5]
+            cond_text = ", ".join([f"**{cond}** ({count})" for cond, count in top_conditions])
+            summary_parts.append(f"Primary conditions: {cond_text}.\n")
+        else:
+            summary_parts.append("Multiple therapeutic areas under investigation.\n")
         
-        # 7. Clinical Implications
-        summary_parts.append("7. IMPLICATIONS FOR CLINICAL PRACTICE")
-        summary_parts.append("")
-        summary_parts.append(f"* The {total_trials} trials identified represent significant research investment in {keywords}")
-        summary_parts.append("* Active trials suggest evolving treatment paradigms and emerging therapeutic options")
-        summary_parts.append("* Diverse intervention approaches indicate multiple pathways being explored")
-        summary_parts.append("* Results from these trials may inform future clinical guidelines and treatment standards")
-        summary_parts.append("")
-        summary_parts.append("")
+        # 3. Intervention Approaches - Brief
+        summary_parts.append("**3. INTERVENTIONS:**")
+        if interventions:
+            int_text = ", ".join([f"**{int_type}** ({count})" for int_type, count in sorted(interventions.items(), key=lambda x: x[1], reverse=True)])
+            summary_parts.append(f"{int_text}.\n")
         
-        # 8. Summary
-        summary_parts.append("8. SUMMARY AND CONCLUSIONS")
-        summary_parts.append("")
-        summary_parts.append(f"This analysis identified {total_trials} clinical trials related to {keywords}. ")
-        summary_parts.append("")
+        # 4. Clinical Phases - Compact
+        summary_parts.append("**4. DEVELOPMENT PIPELINE:**")
         if phases:
+            phase_text = ", ".join([f"**{phase}**: {count} ({count/total_trials*100:.0f}%)" for phase, count in sorted(phases.items())])
+            summary_parts.append(f"{phase_text}.")
             early_phase = sum(count for phase, count in phases.items() if 'PHASE1' in phase or 'EARLY' in phase)
             late_phase = sum(count for phase, count in phases.items() if 'PHASE3' in phase or 'PHASE4' in phase)
-            summary_parts.append(f"The research pipeline includes {early_phase} early-phase and {late_phase} late-phase trials, " +
-                               "demonstrating both foundational research and near-market therapeutic development.")
-        summary_parts.append("")
-        summary_parts.append("The diversity of approaches and active recruitment status of many trials indicates this " +
-                           "is an active area of clinical research with significant therapeutic potential.")
-        summary_parts.append("")
+            summary_parts.append(f"Pipeline: **{early_phase} early-phase**, **{late_phase} late-phase** trials.\n")
         
-        # Add trial list
-        summary_parts.append("")
-        summary_parts.append("DETAILED TRIAL LIST")
-        summary_parts.append("")
-        for idx, study in enumerate(studies, 1):
+        # 5. Status Summary - Very brief
+        summary_parts.append("**5. TRIAL STATUS:**")
+        if statuses:
+            completed = statuses.get('COMPLETED', 0)
+            recruiting = statuses.get('RECRUITING', 0)
+            summary_parts.append(f"**{completed} completed**, **{recruiting} recruiting**. ")
+            summary_parts.append(f"Active trials suggest evolving treatment paradigms.\n")
+        
+        # 6. Key Findings - Concise conclusion
+        summary_parts.append("**6. KEY FINDINGS:**")
+        summary_parts.append(f"Robust **{total_trials}-trial dataset** demonstrates significant research investment. ")
+        summary_parts.append("Diverse approaches indicate multiple therapeutic pathways being explored. ")
+        summary_parts.append("Results may inform future clinical guidelines and treatment standards.\n")
+        
+        # Add CONCISE trial list (top 10 only)
+        summary_parts.append("**TOP TRIALS:**")
+        for idx, study in enumerate(studies[:10], 1):
             try:
                 protocol = study['protocolSection']
                 nct_id = protocol['identificationModule']['nctId']
                 title = protocol['identificationModule']['briefTitle']
                 status = protocol.get('statusModule', {}).get('overallStatus', 'Unknown')
-                summary_parts.append(f"{idx}. **{nct_id}**: {title}")
-                summary_parts.append(f"   Status: {status}")
-                summary_parts.append("")
+                # Truncate long titles
+                if len(title) > 100:
+                    title = title[:97] + "..."
+                summary_parts.append(f"**{nct_id}**: {title} ({status})")
             except (KeyError, TypeError):
                 continue
+        
+        if total_trials > 10:
+            summary_parts.append(f"\n_...and {total_trials - 10} more trials_")
         
         return "\n".join(summary_parts)
     
@@ -605,7 +550,7 @@ REMEMBER: Output only plain text with headings in UPPERCASE, one blank line afte
         logger.info("="*50)
         logger.info(f"Starting ClinicalAgent process for query: '{user_query}'")
         logger.info("="*50)
-        print(f"      🔬 Clinical Agent processing: '{user_query}'")
+        print(f"      Clinical Agent processing: '{user_query}'")
 
         # Step 1: Extract keywords
         logger.info("Step 1/4: Extracting keywords")

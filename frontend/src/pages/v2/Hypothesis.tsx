@@ -397,6 +397,174 @@ export const Hypothesis: React.FC = () => {
 
           <ROSResultCard rosData={rosData} />
 
+          {/* 5b. DETAILED AGENT INSIGHTS SECTION */}
+          {queryData?.insights && queryData.insights.length > 0 && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-indigo-500" />
+                <h3 className="text-xs font-semibold text-warm-text-subtle uppercase tracking-wider font-inter">
+                  Agent Findings
+                </h3>
+              </div>
+              <div className="grid gap-4">
+                {queryData.insights.map((insight: any, idx: number) => {
+                  const bgColor = idx % 4 === 0 ? 'bg-blue-50/30 border-blue-100' : 
+                                 idx % 4 === 1 ? 'bg-emerald-50/30 border-emerald-100' :
+                                 idx % 4 === 2 ? 'bg-purple-50/30 border-purple-100' :
+                                 'bg-orange-50/30 border-orange-100';
+                  
+                  // Format the finding text into readable sections with markdown support
+                  const formatFinding = (text: string) => {
+                    // Split by numbered sections (e.g., "**1. OVERVIEW:**")
+                    const sections = text.split(/(?=\*\*\d+\.\s+[A-Z][A-Z\s]+:\*\*)/g);
+                    
+                    if (sections.length > 1) {
+                      // Has numbered sections
+                      return sections.map((section, i) => {
+                        const match = section.match(/^\*\*(\d+\.\s+[A-Z][A-Z\s]+:)\*\*(.*)/s);
+                        if (match) {
+                          // Process content for inline bold/italic
+                          const processInlineFormatting = (content: string) => {
+                            const parts: (string | React.ReactElement)[] = [];
+                            let currentText = content;
+                            let key = 0;
+                            
+                            // Replace **text** with bold
+                            const boldRegex = /\*\*([^*]+)\*\*/g;
+                            let lastIndex = 0;
+                            let boldMatch;
+                            
+                            while ((boldMatch = boldRegex.exec(currentText)) !== null) {
+                              // Add text before match
+                              if (boldMatch.index > lastIndex) {
+                                parts.push(currentText.slice(lastIndex, boldMatch.index));
+                              }
+                              // Add bold text
+                              parts.push(<strong key={key++} className="font-bold text-warm-text">{boldMatch[1]}</strong>);
+                              lastIndex = boldMatch.index + boldMatch[0].length;
+                            }
+                            
+                            // Add remaining text
+                            if (lastIndex < currentText.length) {
+                              parts.push(currentText.slice(lastIndex));
+                            }
+                            
+                            return parts.length > 0 ? parts : currentText;
+                          };
+                          
+                          return (
+                            <div key={i} className="mb-4 last:mb-0">
+                              <h5 className="text-sm font-bold text-warm-text uppercase tracking-wide mb-2 font-inter border-b border-warm-divider/20 pb-1">
+                                {match[1].trim()}
+                              </h5>
+                              <div className="text-sm text-warm-text-light leading-relaxed font-inter pl-2">
+                                {processInlineFormatting(match[2].trim())}
+                              </div>
+                            </div>
+                          );
+                        }
+                        return null;
+                      }).filter(Boolean);
+                    } else {
+                      // No clear sections - process as paragraph with inline formatting
+                      const processInlineFormatting = (content: string) => {
+                        const parts: (string | React.ReactElement)[] = [];
+                        let currentText = content;
+                        let key = 0;
+                        
+                        // Replace **text** with bold
+                        const boldRegex = /\*\*([^*]+)\*\*/g;
+                        let lastIndex = 0;
+                        let boldMatch;
+                        
+                        while ((boldMatch = boldRegex.exec(currentText)) !== null) {
+                          if (boldMatch.index > lastIndex) {
+                            parts.push(currentText.slice(lastIndex, boldMatch.index));
+                          }
+                          parts.push(<strong key={key++} className="font-bold text-warm-text">{boldMatch[1]}</strong>);
+                          lastIndex = boldMatch.index + boldMatch[0].length;
+                        }
+                        
+                        if (lastIndex < currentText.length) {
+                          parts.push(currentText.slice(lastIndex));
+                        }
+                        
+                        return parts.length > 0 ? parts : currentText;
+                      };
+                      
+                      // Split into paragraphs by double newline
+                      const paragraphs = text.split('\n\n').filter(p => p.trim());
+                      
+                      return paragraphs.map((para, i) => (
+                        <p key={i} className="text-sm text-warm-text-light leading-relaxed font-inter mb-3 last:mb-0">
+                          {processInlineFormatting(para.trim())}
+                        </p>
+                      ));
+                    }
+                  };
+                  
+                  return (
+                    <CalmCard key={idx} className={`border ${bgColor}`}>
+                      <div className="space-y-3">
+                        {/* Header */}
+                        <div className="flex items-center justify-between pb-2 border-b border-warm-divider/30">
+                          <h4 className="text-base font-bold text-warm-text font-inter">{insight.agent}</h4>
+                          <span className="text-xs bg-warm-surface-alt text-warm-text-subtle px-3 py-1.5 rounded-full font-semibold font-inter">
+                            {insight.confidence}% confidence
+                          </span>
+                        </div>
+                        
+                        {/* Metadata badges */}
+                        <div className="flex gap-2 text-xs font-inter flex-wrap">
+                          {insight.total_trials !== undefined && insight.total_trials > 0 && (
+                            <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-md font-medium">
+                              📋 {insight.total_trials} trials
+                            </span>
+                          )}
+                          {insight.sources_used && (
+                            <span className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded-md font-medium">
+                              📚 {(insight.sources_used as any).web || 0} web + {(insight.sources_used as any).internal || 0} internal
+                            </span>
+                          )}
+                          {insight.total_patents !== undefined && insight.total_patents > 0 && (
+                            <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded-md font-medium">
+                              📄 {insight.total_patents} patents
+                            </span>
+                          )}
+                          {insight.total_publications !== undefined && insight.total_publications > 0 && (
+                            <span className="px-2 py-1 bg-orange-100 text-orange-700 rounded-md font-medium">
+                              📖 {insight.total_publications} publications
+                            </span>
+                          )}
+                        </div>
+                        
+                        {/* Finding content with smart formatting */}
+                        <div className="pt-2">
+                          {formatFinding(insight.finding)}
+                        </div>
+                      </div>
+                    </CalmCard>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* 5c. RECOMMENDATION SECTION */}
+          {queryData?.recommendation && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-sage-500" />
+                <h3 className="text-xs font-semibold text-warm-text-subtle uppercase tracking-wider font-inter">
+                  Recommendation
+                </h3>
+              </div>
+              <CalmCard className="bg-sage-50/30 border border-sage-100">
+                <p className="text-sm text-warm-text leading-relaxed font-inter">{queryData.recommendation}</p>
+              </CalmCard>
+            </div>
+          )}
+
           {/* 5. ENHANCED EXECUTIVE SUMMARY PANEL */}
           <div className="grid md:grid-cols-3 gap-6">
             <div className="md:col-span-2">

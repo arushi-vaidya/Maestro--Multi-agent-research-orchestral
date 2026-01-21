@@ -470,27 +470,27 @@ const EvidenceTimelineItem: React.FC<EvidenceTimelineItemProps> = ({
     switch (event.polarity) {
       case 'SUPPORTS':
         return {
-          bgColor: 'bg-cyan-50',
-          borderColor: 'border-cyan-200',
-          badge: 'bg-cyan-100 text-cyan-700',
-          deltaColor: 'text-cyan-600',
+          bgColor: 'bg-emerald-50',
+          borderColor: 'border-emerald-200',
+          badge: 'bg-emerald-100 text-emerald-700',
+          deltaColor: 'text-emerald-600',
           icon: '↑',
         };
       case 'CONTRADICTS':
         return {
-          bgColor: 'bg-amber-50',
-          borderColor: 'border-amber-200',
-          badge: 'bg-amber-100 text-amber-700',
-          deltaColor: 'text-amber-600',
+          bgColor: 'bg-red-50',
+          borderColor: 'border-red-200',
+          badge: 'bg-red-100 text-red-700',
+          deltaColor: 'text-red-600',
           icon: '↓',
         };
       case 'SUGGESTS':
       default:
         return {
-          bgColor: 'bg-gray-50',
-          borderColor: 'border-gray-200',
-          badge: 'bg-gray-100 text-gray-700',
-          deltaColor: 'text-gray-600',
+          bgColor: 'bg-yellow-50',
+          borderColor: 'border-yellow-200',
+          badge: 'bg-yellow-100 text-yellow-700',
+          deltaColor: 'text-yellow-600',
           icon: '→',
         };
     }
@@ -516,6 +516,21 @@ const EvidenceTimelineItem: React.FC<EvidenceTimelineItemProps> = ({
     month: 'long',
   });
 
+  // Get box color based on quality
+  const getBoxColor = () => {
+    switch (event.quality) {
+      case 'HIGH':
+        return { bgColor: 'bg-green-50', borderColor: 'border-green-200' };
+      case 'MEDIUM':
+        return { bgColor: 'bg-yellow-50', borderColor: 'border-yellow-200' };
+      case 'LOW':
+      default:
+        return { bgColor: 'bg-red-50', borderColor: 'border-red-200' };
+    }
+  };
+
+  const boxColor = getBoxColor();
+
   // Get icon for evidence type
   const getEvidenceIcon = () => {
     const agentId = event.agent_id?.toLowerCase() || '';
@@ -527,7 +542,7 @@ const EvidenceTimelineItem: React.FC<EvidenceTimelineItemProps> = ({
   };
 
   return (
-    <div className={`border ${polarity.borderColor} rounded-lg ${polarity.bgColor} p-5 cursor-pointer hover:shadow-sm transition-all`} onClick={onToggle}>
+    <div className={`border ${boxColor.borderColor} rounded-lg ${boxColor.bgColor} p-5 cursor-pointer hover:shadow-sm transition-all`} onClick={onToggle}>
       <div className="flex gap-4">
         {/* Timeline Icon - Colored by Quality */}
         <div className="flex-shrink-0">

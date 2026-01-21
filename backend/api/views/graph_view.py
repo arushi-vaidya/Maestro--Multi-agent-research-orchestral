@@ -171,6 +171,40 @@ def _build_node_metadata(node: Dict[str, Any]) -> Dict[str, Any]:
 # ENDPOINTS
 # ==============================================================================
 
+@router.get("/debug/stats")
+def get_graph_debug_stats():
+    """
+    Debug endpoint to check AKGP graph state
+    Returns raw statistics and node counts
+    """
+    try:
+        from api.routes import get_master_agent
+        master = get_master_agent()
+        graph_manager = master.graph_manager
+        
+        stats = graph_manager.get_stats()
+        
+        # Try to get some sample nodes
+        drug_nodes = graph_manager.find_nodes_by_type(NodeType.DRUG, limit=5)
+        disease_nodes = graph_manager.find_nodes_by_type(NodeType.DISEASE, limit=5)
+        evidence_nodes = graph_manager.find_nodes_by_type(NodeType.EVIDENCE, limit=5)
+        
+        return {
+            "graph_stats": stats,
+            "sample_counts": {
+                "drugs": len(drug_nodes),
+                "diseases": len(disease_nodes),
+                "evidence": len(evidence_nodes)
+            },
+            "sample_drug_nodes": [{"id": n.get("id"), "name": n.get("name")} for n in drug_nodes],
+            "sample_disease_nodes": [{"id": n.get("id"), "name": n.get("name")} for n in disease_nodes],
+            "message": "If all counts are 0, no data has been ingested yet. Run a query from Research Page."
+        }
+    except Exception as e:
+        logger.error(f"Debug stats error: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/summary", response_model=GraphSummaryResponse)
 def get_graph_summary(
     node_limit: int = Query(100, description="Maximum nodes to return", ge=1, le=1000),
