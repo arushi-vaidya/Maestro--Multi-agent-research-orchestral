@@ -1,0 +1,29 @@
+# MAESTRO Backend Dependencies - Feature 1
+
+# FastAPI & Server
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+python-multipart==0.0.6
+
+# LLM Providers
+google-generativeai==0.3.2
+openai==1.6.1
+
+# Utilities
+python-dotenv==1.0.0
+pydantic==2.5.2
+
+# Async support
+httpx==0.25.2
+
+# Development (optional)
+pytest==7.4.3
+pytest-asyncio==0.21.1
+
+# Note: More dependencies will be added in later features:
+# Feature 2: None (uses existing)
+# Feature 3: requests, beautifulsoup4 (for data sources)
+# Feature 4: redis, aioredis (for caching)
+# Feature 5: reportlab, openpyxl (for PDF/Excel export)
+# Feature 6: chromadb, langchain (for RAG)
+# Feature 7: langchain, langgraph (for web intelligence)

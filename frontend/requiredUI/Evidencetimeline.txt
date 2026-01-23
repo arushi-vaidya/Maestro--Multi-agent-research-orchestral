@@ -1,0 +1,223 @@
+import React, { useState } from 'react';
+import NavigationHeader from '@/components/pharmagraph/NavigationHeader';
+import TimelineEvent from '@/components/pharmagraph/TimelineEvent';
+import ConfidenceScore from '@/components/pharmagraph/ConfidenceScore';
+import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Calendar, TrendingUp, Filter } from 'lucide-react';
+
+const timelineData = [
+  {
+    date: 'November 2024',
+    title: 'Phase II Trial Results Published',
+    description: 'Combination of metformin with standard temozolomide showed improved progression-free survival (8.3 vs 6.1 months, p=0.03) in newly diagnosed GBM patients.',
+    type: 'trial_result',
+    methodology: 'clinical_trial',
+    sourceId: 'NCT02149459',
+    journal: 'Neuro-Oncology',
+    confidenceImpact: 8
+  },
+  {
+    date: 'August 2024',
+    title: 'Negative Monotherapy Trial',
+    description: 'Phase III trial of metformin monotherapy in recurrent GBM showed no significant survival benefit (HR: 1.02, p=0.89). Supports combination therapy approach only.',
+    type: 'warning',
+    methodology: 'clinical_trial',
+    sourceId: 'NCT02780024',
+    journal: 'J Clin Oncol',
+    confidenceImpact: -12
+  },
+  {
+    date: 'March 2024',
+    title: 'Mechanistic Review Published',
+    description: 'Comprehensive review of AMPK-mTOR axis in glioblastoma confirms therapeutic rationale and identifies potential biomarkers for patient selection.',
+    type: 'publication',
+    methodology: 'review',
+    sourceId: 'PMID:38421567',
+    journal: 'Cancer Res',
+    confidenceImpact: 4
+  },
+  {
+    date: 'December 2023',
+    title: 'New Trial Initiated',
+    description: 'Phase III trial (PARADIGM-2) initiated testing metformin + temozolomide + bevacizumab in MGMT-methylated GBM patients. n=420, primary endpoint: OS.',
+    type: 'trial_start',
+    methodology: 'clinical_trial',
+    sourceId: 'NCT05589012',
+    confidenceImpact: 2
+  },
+  {
+    date: 'September 2023',
+    title: 'In Vitro Synergy Study',
+    description: 'Demonstrated synergistic effects of metformin with radiation therapy in patient-derived GBM organoids. Enhanced apoptosis via AMPK-mediated autophagy.',
+    type: 'publication',
+    methodology: 'in_vitro',
+    sourceId: 'PMID:37895432',
+    journal: 'Cell Death Dis',
+    confidenceImpact: 3
+  },
+  {
+    date: 'May 2023',
+    title: 'Population Cohort Analysis',
+    description: 'Retrospective analysis of 12,847 diabetic GBM patients showed 18% reduced mortality in metformin users vs other diabetic medications (adjusted HR: 0.82).',
+    type: 'publication',
+    methodology: 'meta_analysis',
+    sourceId: 'PMID:37234891',
+    journal: 'Cancer Epidemiol',
+    confidenceImpact: 6
+  }
+];
+
+const confidenceHistory = [
+  { date: 'May 2023', score: 58 },
+  { date: 'Sep 2023', score: 61 },
+  { date: 'Dec 2023', score: 63 },
+  { date: 'Mar 2024', score: 67 },
+  { date: 'Aug 2024', score: 55 },
+  { date: 'Nov 2024', score: 72 },
+];
+
+export default function EvidenceTimeline() {
+  const [hypothesis, setHypothesis] = useState('metformin-gbm');
+  const [timeRange, setTimeRange] = useState('2y');
+
+  const maxScore = Math.max(...confidenceHistory.map(c => c.score));
+  const minScore = Math.min(...confidenceHistory.map(c => c.score));
+
+  return (
+    <div className="min-h-screen bg-[#FAFAFA]">
+      <NavigationHeader currentPage="EvidenceTimeline" />
+      
+      <div className="max-w-6xl mx-auto px-6 py-8">
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="text-2xl font-semibold text-slate-900 mb-2">
+            Evidence Timeline
+          </h1>
+          <p className="text-slate-600">
+            Track how scientific evidence evolves over time for drug repurposing hypotheses
+          </p>
+        </div>
+
+        {/* Controls */}
+        <div className="flex items-center gap-4 mb-8">
+          <Select value={hypothesis} onValueChange={setHypothesis}>
+            <SelectTrigger className="w-72 bg-white border-slate-200">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="metformin-gbm">Metformin → Glioblastoma</SelectItem>
+              <SelectItem value="propranolol-angiosarcoma">Propranolol → Angiosarcoma</SelectItem>
+              <SelectItem value="thalidomide-kaposi">Thalidomide → Kaposi Sarcoma</SelectItem>
+            </SelectContent>
+          </Select>
+          
+          <Select value={timeRange} onValueChange={setTimeRange}>
+            <SelectTrigger className="w-40 bg-white border-slate-200">
+              <Calendar className="w-4 h-4 mr-2 text-slate-500" />
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="6m">Last 6 months</SelectItem>
+              <SelectItem value="1y">Last year</SelectItem>
+              <SelectItem value="2y">Last 2 years</SelectItem>
+              <SelectItem value="5y">Last 5 years</SelectItem>
+              <SelectItem value="all">All time</SelectItem>
+            </SelectContent>
+          </Select>
+
+          <Button variant="outline" className="border-slate-200 text-slate-600">
+            <Filter className="w-4 h-4 mr-2" />
+            Evidence Type
+          </Button>
+        </div>
+
+        <div className="grid lg:grid-cols-12 gap-8">
+          {/* Confidence Trend */}
+          <div className="lg:col-span-4">
+            <div className="bg-white border border-slate-200 rounded-lg p-6 sticky top-24">
+              <h3 className="text-sm font-medium text-slate-500 uppercase tracking-wider mb-4">
+                Confidence Evolution
+              </h3>
+              
+              {/* Current Score */}
+              <div className="flex items-center gap-4 mb-6">
+                <ConfidenceScore score={72} size="large" />
+                <div>
+                  <div className="flex items-center gap-1.5 text-teal-600">
+                    <TrendingUp className="w-4 h-4" />
+                    <span className="text-sm font-medium">+14 points</span>
+                  </div>
+                  <span className="text-xs text-slate-500">since May 2023</span>
+                </div>
+              </div>
+
+              {/* Mini chart */}
+              <div className="h-32 flex items-end gap-2 mb-4">
+                {confidenceHistory.map((point, i) => (
+                  <div key={i} className="flex-1 flex flex-col items-center gap-1">
+                    <div 
+                      className={`w-full rounded-t transition-all ${
+                        i === confidenceHistory.length - 1 
+                          ? 'bg-teal-500' 
+                          : 'bg-slate-200'
+                      }`}
+                      style={{ 
+                        height: `${((point.score - minScore + 10) / (maxScore - minScore + 20)) * 100}%`,
+                        minHeight: '8px'
+                      }}
+                    />
+                  </div>
+                ))}
+              </div>
+              <div className="flex justify-between text-xs text-slate-500">
+                <span>{confidenceHistory[0].date}</span>
+                <span>{confidenceHistory[confidenceHistory.length - 1].date}</span>
+              </div>
+
+              {/* Summary stats */}
+              <div className="mt-6 pt-6 border-t border-slate-100 space-y-3">
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-500">Total evidence events</span>
+                  <span className="font-medium text-slate-900">{timelineData.length}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-500">Positive contributions</span>
+                  <span className="font-medium text-teal-600">
+                    +{timelineData.filter(e => e.confidenceImpact > 0).reduce((a, e) => a + e.confidenceImpact, 0)}
+                  </span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-slate-500">Negative contributions</span>
+                  <span className="font-medium text-rose-500">
+                    {timelineData.filter(e => e.confidenceImpact < 0).reduce((a, e) => a + e.confidenceImpact, 0)}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Timeline */}
+          <div className="lg:col-span-8">
+            <div className="bg-white border border-slate-200 rounded-lg p-6">
+              <h3 className="text-sm font-medium text-slate-500 uppercase tracking-wider mb-6">
+                Evidence Events
+              </h3>
+              
+              <div className="space-y-0">
+                {timelineData.map((event, index) => (
+                  <TimelineEvent
+                    key={index}
+                    event={event}
+                    isFirst={index === 0}
+                    isLast={index === timelineData.length - 1}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

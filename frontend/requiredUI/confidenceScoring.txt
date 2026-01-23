@@ -1,0 +1,328 @@
+import React, { useState } from 'react';
+import NavigationHeader from '@/components/pharmagraph/NavigationHeader';
+import ConfidenceScore from '@/components/pharmagraph/ConfidenceScore';
+import ScoreBreakdown from '@/components/pharmagraph/ScoreBreakdown';
+import UncertaintyIndicator from '@/components/pharmagraph/UncertaintyIndicator';
+import EvidenceStrengthIndicator from '@/components/pharmagraph/EvidenceStrengthIndicator';
+import MethodologyBadge from '@/components/pharmagraph/MethodologyBadge';
+import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { ArrowRight, Download, FileText, Scale, AlertTriangle, Beaker } from 'lucide-react';
+
+const hypotheses = [
+  { id: 'H-2024-0847', drug: 'Metformin', indication: 'Glioblastoma', score: 72 },
+  { id: 'H-2024-0912', drug: 'Propranolol', indication: 'Angiosarcoma', score: 68 },
+  { id: 'H-2024-1103', drug: 'Thalidomide', indication: 'Kaposi Sarcoma', score: 81 },
+];
+
+const scoreFactors = [
+  {
+    name: 'Clinical Trial Evidence',
+    weight: 18,
+    description: 'Phase II positive results in combination therapy setting (NCT02149459)'
+  },
+  {
+    name: 'Mechanistic Support',
+    weight: 15,
+    description: 'Well-established AMPK-mTOR pathway connection with direct relevance to GBM biology'
+  },
+  {
+    name: 'Population Studies',
+    weight: 12,
+    description: 'Retrospective cohort studies showing survival benefit in diabetic GBM patients'
+  },
+  {
+    name: 'In Vitro Validation',
+    weight: 8,
+    description: 'Multiple studies confirming anti-proliferative effects in GBM cell lines'
+  },
+  {
+    name: 'Negative Monotherapy Trial',
+    weight: -14,
+    description: 'Phase III trial showed no benefit as monotherapy, limiting applicability'
+  },
+  {
+    name: 'Sample Size Limitations',
+    weight: -7,
+    description: 'Positive trials have relatively small sample sizes (n<200)'
+  }
+];
+
+const uncertaintySources = [
+  {
+    category: 'Patient Selection',
+    level: 'moderate',
+    description: 'Biomarkers for patient stratification not yet validated. Response may vary by MGMT methylation status.'
+  },
+  {
+    category: 'Dosing Protocol',
+    level: 'moderate',
+    description: 'Optimal dose for anti-cancer effects may differ from standard diabetic dosing. Ongoing trials testing 1500-2500mg/day.'
+  },
+  {
+    category: 'Mechanistic Pathway',
+    level: 'low',
+    description: 'AMPK-mTOR mechanism well-characterized with strong supporting evidence across multiple study types.'
+  },
+  {
+    category: 'Combination Partners',
+    level: 'high',
+    description: 'Limited data on optimal combination regimens beyond temozolomide. Bevacizumab combinations under investigation.'
+  }
+];
+
+const evidenceSummary = [
+  { type: 'clinical_trial', count: 8, positive: 5, negative: 2, neutral: 1 },
+  { type: 'meta_analysis', count: 3, positive: 2, negative: 0, neutral: 1 },
+  { type: 'in_vitro', count: 24, positive: 21, negative: 1, neutral: 2 },
+  { type: 'in_vivo', count: 12, positive: 9, negative: 2, neutral: 1 },
+  { type: 'case_study', count: 6, positive: 4, negative: 1, neutral: 1 },
+];
+
+export default function ConfidenceScoring() {
+  const [selectedHypothesis, setSelectedHypothesis] = useState(hypotheses[0]);
+
+  return (
+    <div className="min-h-screen bg-[#FAFAFA]">
+      <NavigationHeader currentPage="ConfidenceScoring" />
+      
+      <div className="max-w-6xl mx-auto px-6 py-8">
+        {/* Header */}
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-2xl font-semibold text-slate-900 mb-2">
+              Confidence Scoring
+            </h1>
+            <p className="text-slate-600">
+              Understand the factors contributing to hypothesis confidence scores
+            </p>
+          </div>
+          <Button variant="outline" className="border-slate-200">
+            <Download className="w-4 h-4 mr-2" />
+            Export Report
+          </Button>
+        </div>
+
+        {/* Hypothesis Selector */}
+        <div className="mb-8">
+          <Select 
+            value={selectedHypothesis.id} 
+            onValueChange={(v) => setSelectedHypothesis(hypotheses.find(h => h.id === v))}
+          >
+            <SelectTrigger className="w-80 bg-white border-slate-200">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {hypotheses.map((h) => (
+                <SelectItem key={h.id} value={h.id}>
+                  <div className="flex items-center gap-2">
+                    <span>{h.drug}</span>
+                    <ArrowRight className="w-3 h-3 text-slate-400" />
+                    <span>{h.indication}</span>
+                    <span className="text-slate-500 ml-2">({h.score})</span>
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Main Content */}
+        <div className="grid lg:grid-cols-12 gap-8">
+          {/* Score Overview */}
+          <div className="lg:col-span-4">
+            <div className="bg-white border border-slate-200 rounded-lg p-6 sticky top-24">
+              {/* Main Score */}
+              <div className="text-center mb-6 pb-6 border-b border-slate-100">
+                <p className="text-sm font-medium text-slate-500 uppercase tracking-wider mb-4">
+                  Overall Confidence
+                </p>
+                <div className="flex justify-center mb-4">
+                  <ConfidenceScore score={selectedHypothesis.score} size="large" />
+                </div>
+                <p className="text-lg font-semibold text-slate-900">
+                  {selectedHypothesis.drug} → {selectedHypothesis.indication}
+                </p>
+                <p className="text-sm text-slate-500 mt-1">
+                  {selectedHypothesis.id}
+                </p>
+              </div>
+
+              {/* Quick Stats */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-slate-500">Evidence Level</span>
+                  <EvidenceStrengthIndicator level="moderate" showLabel={true} />
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-slate-500">Total Sources</span>
+                  <span className="font-medium text-slate-900">53</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-slate-500">Clinical Trials</span>
+                  <span className="font-medium text-slate-900">8</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-slate-500">Last Updated</span>
+                  <span className="font-medium text-slate-900">Nov 2024</span>
+                </div>
+              </div>
+
+              {/* Score Interpretation */}
+              <div className="mt-6 p-4 bg-slate-50 rounded-lg">
+                <p className="text-sm text-slate-600">
+                  <strong>Interpretation:</strong> Moderate-to-high confidence with 
+                  strong mechanistic support. Best suited for combination therapy 
+                  contexts. Further patient stratification recommended.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Detailed Analysis */}
+          <div className="lg:col-span-8">
+            <Tabs defaultValue="breakdown" className="space-y-6">
+              <TabsList className="bg-white border border-slate-200 p-1">
+                <TabsTrigger value="breakdown" className="data-[state=active]:bg-slate-100">
+                  <Scale className="w-4 h-4 mr-2" />
+                  Score Breakdown
+                </TabsTrigger>
+                <TabsTrigger value="uncertainty" className="data-[state=active]:bg-slate-100">
+                  <AlertTriangle className="w-4 h-4 mr-2" />
+                  Uncertainty Sources
+                </TabsTrigger>
+                <TabsTrigger value="evidence" className="data-[state=active]:bg-slate-100">
+                  <Beaker className="w-4 h-4 mr-2" />
+                  Evidence Summary
+                </TabsTrigger>
+              </TabsList>
+
+              {/* Score Breakdown */}
+              <TabsContent value="breakdown">
+                <div className="bg-white border border-slate-200 rounded-lg p-6">
+                  <h3 className="text-sm font-medium text-slate-500 uppercase tracking-wider mb-6">
+                    Contributing Factors
+                  </h3>
+                  <ScoreBreakdown factors={scoreFactors} />
+                  
+                  <div className="mt-8 pt-6 border-t border-slate-100">
+                    <h4 className="text-sm font-medium text-slate-900 mb-3">
+                      Methodology
+                    </h4>
+                    <p className="text-sm text-slate-600 leading-relaxed">
+                      Confidence scores are computed using a weighted evidence aggregation model 
+                      that considers study quality, sample sizes, replication status, and mechanistic 
+                      coherence. Negative evidence is weighted according to study rigor and direct 
+                      relevance to the therapeutic hypothesis. Scores are calibrated against historical 
+                      drug repurposing success rates.
+                    </p>
+                  </div>
+                </div>
+              </TabsContent>
+
+              {/* Uncertainty Sources */}
+              <TabsContent value="uncertainty">
+                <div className="bg-white border border-slate-200 rounded-lg p-6">
+                  <h3 className="text-sm font-medium text-slate-500 uppercase tracking-wider mb-6">
+                    Sources of Uncertainty
+                  </h3>
+                  <UncertaintyIndicator sources={uncertaintySources} />
+                  
+                  <div className="mt-8 pt-6 border-t border-slate-100">
+                    <h4 className="text-sm font-medium text-slate-900 mb-3">
+                      Recommendations to Reduce Uncertainty
+                    </h4>
+                    <ul className="text-sm text-slate-600 space-y-2">
+                      <li className="flex items-start gap-2">
+                        <span className="text-slate-400">1.</span>
+                        Validate MGMT methylation as predictive biomarker in prospective study
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-slate-400">2.</span>
+                        Conduct dose-escalation study to determine optimal anti-cancer dosing
+                      </li>
+                      <li className="flex items-start gap-2">
+                        <span className="text-slate-400">3.</span>
+                        Evaluate additional combination partners beyond temozolomide
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+              </TabsContent>
+
+              {/* Evidence Summary */}
+              <TabsContent value="evidence">
+                <div className="bg-white border border-slate-200 rounded-lg p-6">
+                  <h3 className="text-sm font-medium text-slate-500 uppercase tracking-wider mb-6">
+                    Evidence by Type
+                  </h3>
+                  
+                  <div className="space-y-4">
+                    {evidenceSummary.map((item) => (
+                      <div 
+                        key={item.type}
+                        className="p-4 border border-slate-200 rounded-lg"
+                      >
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-3">
+                            <MethodologyBadge type={item.type} />
+                            <span className="font-medium text-slate-900 capitalize">
+                              {item.type.replace(/_/g, ' ')}
+                            </span>
+                          </div>
+                          <span className="text-sm text-slate-500">
+                            {item.count} studies
+                          </span>
+                        </div>
+                        
+                        {/* Stacked bar */}
+                        <div className="h-3 bg-slate-100 rounded-full overflow-hidden flex">
+                          <div 
+                            className="bg-teal-500 h-full"
+                            style={{ width: `${(item.positive / item.count) * 100}%` }}
+                          />
+                          <div 
+                            className="bg-slate-400 h-full"
+                            style={{ width: `${(item.neutral / item.count) * 100}%` }}
+                          />
+                          <div 
+                            className="bg-rose-400 h-full"
+                            style={{ width: `${(item.negative / item.count) * 100}%` }}
+                          />
+                        </div>
+                        
+                        <div className="flex items-center gap-4 mt-2 text-xs text-slate-500">
+                          <span className="flex items-center gap-1">
+                            <span className="w-2 h-2 rounded-full bg-teal-500" />
+                            {item.positive} positive
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <span className="w-2 h-2 rounded-full bg-slate-400" />
+                            {item.neutral} neutral
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <span className="w-2 h-2 rounded-full bg-rose-400" />
+                            {item.negative} negative
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* View all button */}
+                  <div className="mt-6 text-center">
+                    <Button variant="outline" className="border-slate-200">
+                      <FileText className="w-4 h-4 mr-2" />
+                      View All 53 Sources
+                    </Button>
+                  </div>
+                </div>
+              </TabsContent>
+            </Tabs>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}

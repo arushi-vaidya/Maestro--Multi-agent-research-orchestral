@@ -1,0 +1,189 @@
+import React from 'react';
+import { Link } from 'react-router-dom';
+import { createPageUrl } from '@/utils';
+import NavigationHeader from '@/components/pharmagraph/NavigationHeader';
+import Logo from '@/components/pharmagraph/Logo';
+import SectionDivider from '@/components/pharmagraph/SectionDivider';
+import { Button } from '@/components/ui/button';
+import { ArrowRight, BookOpen, GitBranch, LineChart, Shield, Clock, Microscope } from 'lucide-react';
+
+export default function Landing() {
+  return (
+    <div className="min-h-screen bg-[#FAFAFA]">
+      <NavigationHeader currentPage="Landing" />
+      
+      {/* Hero Section */}
+      <section className="max-w-6xl mx-auto px-6 pt-24 pb-20">
+        <div className="max-w-3xl">
+          <p className="text-sm font-medium text-slate-500 uppercase tracking-wider mb-4">
+            Computational Drug Discovery Platform
+          </p>
+          <h1 className="text-4xl md:text-5xl font-semibold text-slate-900 leading-tight tracking-tight mb-6">
+            Evidence-based drug repurposing through structured scientific reasoning
+          </h1>
+          <p className="text-lg text-slate-600 leading-relaxed mb-8 max-w-2xl">
+            PharmaGraph integrates biomedical knowledge graphs with temporal reasoning 
+            to systematically identify and validate drug repurposing opportunities 
+            with full mechanistic interpretability.
+          </p>
+          <div className="flex items-center gap-4">
+            <Button 
+              asChild
+              className="bg-slate-900 hover:bg-slate-800 text-white px-6 h-11"
+            >
+              <Link to={createPageUrl('ResearchConsole')}>
+                Access Research Console
+                <ArrowRight className="w-4 h-4 ml-2" />
+              </Link>
+            </Button>
+            <Button 
+              variant="outline" 
+              className="border-slate-300 text-slate-700 hover:bg-slate-100 px-6 h-11"
+            >
+              Read Documentation
+            </Button>
+          </div>
+        </div>
+      </section>
+
+      {/* Methodology Overview */}
+      <section className="border-t border-slate-200 bg-white">
+        <div className="max-w-6xl mx-auto px-6 py-20">
+          <div className="grid md:grid-cols-3 gap-12">
+            <div>
+              <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center mb-4">
+                <GitBranch className="w-5 h-5 text-slate-600" />
+              </div>
+              <h3 className="text-lg font-semibold text-slate-900 mb-2">
+                Knowledge Graph Reasoning
+              </h3>
+              <p className="text-slate-600 text-sm leading-relaxed">
+                Traverse multi-relational biomedical networks connecting drugs, 
+                targets, diseases, pathways, and phenotypes with mechanistic context.
+              </p>
+            </div>
+            <div>
+              <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center mb-4">
+                <Clock className="w-5 h-5 text-slate-600" />
+              </div>
+              <h3 className="text-lg font-semibold text-slate-900 mb-2">
+                Temporal Evidence Evolution
+              </h3>
+              <p className="text-slate-600 text-sm leading-relaxed">
+                Track how scientific consensus develops over time, identifying 
+                emerging opportunities and maturing hypotheses with temporal attribution.
+              </p>
+            </div>
+            <div>
+              <div className="w-10 h-10 rounded-lg bg-slate-100 flex items-center justify-center mb-4">
+                <Shield className="w-5 h-5 text-slate-600" />
+              </div>
+              <h3 className="text-lg font-semibold text-slate-900 mb-2">
+                Confidence Quantification
+              </h3>
+              <p className="text-slate-600 text-sm leading-relaxed">
+                Every inference is accompanied by calibrated uncertainty estimates, 
+                evidence provenance, and explicit reasoning chains for full interpretability.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <SectionDivider label="Research Workflow" />
+
+      {/* Workflow Steps */}
+      <section className="max-w-6xl mx-auto px-6 py-12">
+        <div className="space-y-0">
+          {[
+            {
+              step: '01',
+              title: 'Hypothesis Formulation',
+              description: 'Define drug-disease pairs or mechanistic queries using structured scientific vocabulary and ontology-aligned terminology.',
+              link: 'ResearchConsole'
+            },
+            {
+              step: '02',
+              title: 'Evidence Aggregation',
+              description: 'Systematically collect and weight evidence from clinical trials, literature, pathway databases, and computational predictions.',
+              link: 'EvidenceTimeline'
+            },
+            {
+              step: '03',
+              title: 'Graph-Based Reasoning',
+              description: 'Explore multi-hop reasoning paths through the knowledge graph to identify mechanistic support and potential off-target effects.',
+              link: 'KnowledgeGraph'
+            },
+            {
+              step: '04',
+              title: 'Confidence Assessment',
+              description: 'Review calibrated confidence scores with detailed explanation of contributing factors, conflicts, and uncertainty sources.',
+              link: 'ConfidenceScoring'
+            },
+          ].map((item, index) => (
+            <Link 
+              key={item.step}
+              to={createPageUrl(item.link)}
+              className="group block border-t border-slate-200 py-8 hover:bg-slate-50 transition-colors -mx-6 px-6"
+            >
+              <div className="flex items-start gap-8">
+                <span className="text-sm font-mono text-slate-400 mt-1">
+                  {item.step}
+                </span>
+                <div className="flex-1">
+                  <h3 className="text-xl font-semibold text-slate-900 mb-2 group-hover:text-slate-700 transition-colors">
+                    {item.title}
+                  </h3>
+                  <p className="text-slate-600 max-w-2xl">
+                    {item.description}
+                  </p>
+                </div>
+                <ArrowRight className="w-5 h-5 text-slate-400 mt-1 group-hover:translate-x-1 transition-transform" />
+              </div>
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      {/* Data Sources */}
+      <section className="border-t border-slate-200 bg-white">
+        <div className="max-w-6xl mx-auto px-6 py-20">
+          <h2 className="text-sm font-medium text-slate-500 uppercase tracking-wider mb-8">
+            Integrated Knowledge Sources
+          </h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+            {[
+              'DrugBank',
+              'ChEMBL',
+              'UniProt',
+              'Reactome',
+              'ClinicalTrials.gov',
+              'PubMed Central',
+              'DisGeNET',
+              'KEGG Pathways'
+            ].map((source) => (
+              <div 
+                key={source}
+                className="px-4 py-3 border border-slate-200 rounded-lg text-sm font-medium text-slate-700 text-center"
+              >
+                {source}
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="border-t border-slate-200 bg-[#FAFAFA]">
+        <div className="max-w-6xl mx-auto px-6 py-12">
+          <div className="flex items-center justify-between">
+            <Logo size="small" />
+            <p className="text-sm text-slate-500">
+              A research platform for systematic drug repurposing
+            </p>
+          </div>
+        </div>
+      </footer>
+    </div>
+  );
+}
