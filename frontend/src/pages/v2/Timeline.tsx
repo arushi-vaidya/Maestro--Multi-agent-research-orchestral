@@ -39,7 +39,7 @@ type EvidenceType = 'clinical' | 'review' | 'mechanistic' | 'market' | 'all';
 
 export const Timeline: React.FC = () => {
   // Query refresh hook
-  const { queryCount } = useQueryRefresh();
+  const { queryCount, lastQueryId, lastQueryText } = useQueryRefresh();
 
   // State
   const [timeline, setTimeline] = useState<EvidenceTimelineResponse | null>(null);
@@ -55,20 +55,21 @@ export const Timeline: React.FC = () => {
    */
   useEffect(() => {
     const fetchData = async () => {
+      const queryId = lastQueryId || undefined;
       try {
-        console.log('[Timeline] Fetching timeline data (queryCount:', queryCount, ')');
+        console.log('[Timeline] Fetching timeline data (queryCount:', queryCount, ', queryId:', queryId, ')');
         setLoading(true);
         setError(null);
         setTimeline(null);
 
         // Fetch timeline events
-        const timelineData = await api.getEvidenceTimeline(100);
+        const timelineData = await api.getEvidenceTimeline(100, undefined, undefined, queryId);
         console.log('[Timeline] Timeline data loaded:', timelineData);
         setTimeline(timelineData);
 
         // Fetch latest ROS scores (for confidence panel)
         try {
-          const ros = await api.getROSLatest();
+          const ros = await api.getROSLatest(queryId);
           setRosData(ros);
         } catch {
           console.warn('Could not fetch ROS data');
@@ -83,7 +84,14 @@ export const Timeline: React.FC = () => {
     };
 
     fetchData();
-  }, [queryCount]);
+  }, [queryCount, lastQueryId]);
+
+  const queryLabel = useMemo(() => {
+    if (lastQueryText && lastQueryText.trim()) {
+      return lastQueryText.length > 80 ? `${lastQueryText.slice(0, 77)}...` : lastQueryText;
+    }
+    return 'Most recent query';
+  }, [lastQueryText]);
 
   /**
    * Generate mock date for evidence using seeded randomness
@@ -261,6 +269,10 @@ export const Timeline: React.FC = () => {
         <p className="text-warm-text-light font-inter max-w-3xl leading-relaxed">
           Track how scientific evidence evolves over time for drug repurposing hypotheses
         </p>
+        <div className="mt-3 inline-flex items-center gap-3 px-3 py-2 rounded-lg border border-blue-100 bg-blue-50/40">
+          <span className="text-xs uppercase tracking-wide font-semibold text-blue-700">Query</span>
+          <span className="text-sm text-warm-text font-medium">{queryLabel}</span>
+        </div>
       </div>
 
       {/* FILTER BAR */}
@@ -458,27 +470,27 @@ const EvidenceTimelineItem: React.FC<EvidenceTimelineItemProps> = ({
     switch (event.polarity) {
       case 'SUPPORTS':
         return {
-          bgColor: 'bg-cyan-50',
-          borderColor: 'border-cyan-200',
-          badge: 'bg-cyan-100 text-cyan-700',
-          deltaColor: 'text-cyan-600',
+          bgColor: 'bg-emerald-50',
+          borderColor: 'border-emerald-200',
+          badge: 'bg-emerald-100 text-emerald-700',
+          deltaColor: 'text-emerald-600',
           icon: '↑',
         };
       case 'CONTRADICTS':
         return {
-          bgColor: 'bg-amber-50',
-          borderColor: 'border-amber-200',
-          badge: 'bg-amber-100 text-amber-700',
-          deltaColor: 'text-amber-600',
+          bgColor: 'bg-red-50',
+          borderColor: 'border-red-200',
+          badge: 'bg-red-100 text-red-700',
+          deltaColor: 'text-red-600',
           icon: '↓',
         };
       case 'SUGGESTS':
       default:
         return {
-          bgColor: 'bg-gray-50',
-          borderColor: 'border-gray-200',
-          badge: 'bg-gray-100 text-gray-700',
-          deltaColor: 'text-gray-600',
+          bgColor: 'bg-yellow-50',
+          borderColor: 'border-yellow-200',
+          badge: 'bg-yellow-100 text-yellow-700',
+          deltaColor: 'text-yellow-600',
           icon: '→',
         };
     }
@@ -504,6 +516,21 @@ const EvidenceTimelineItem: React.FC<EvidenceTimelineItemProps> = ({
     month: 'long',
   });
 
+  // Get box color based on quality
+  const getBoxColor = () => {
+    switch (event.quality) {
+      case 'HIGH':
+        return { bgColor: 'bg-green-50', borderColor: 'border-green-200' };
+      case 'MEDIUM':
+        return { bgColor: 'bg-yellow-50', borderColor: 'border-yellow-200' };
+      case 'LOW':
+      default:
+        return { bgColor: 'bg-red-50', borderColor: 'border-red-200' };
+    }
+  };
+
+  const boxColor = getBoxColor();
+
   // Get icon for evidence type
   const getEvidenceIcon = () => {
     const agentId = event.agent_id?.toLowerCase() || '';
@@ -515,7 +542,7 @@ const EvidenceTimelineItem: React.FC<EvidenceTimelineItemProps> = ({
   };
 
   return (
-    <div className={`border ${polarity.borderColor} rounded-lg ${polarity.bgColor} p-5 cursor-pointer hover:shadow-sm transition-all`} onClick={onToggle}>
+    <div className={`border ${boxColor.borderColor} rounded-lg ${boxColor.bgColor} p-5 cursor-pointer hover:shadow-sm transition-all`} onClick={onToggle}>
       <div className="flex gap-4">
         {/* Timeline Icon - Colored by Quality */}
         <div className="flex-shrink-0">

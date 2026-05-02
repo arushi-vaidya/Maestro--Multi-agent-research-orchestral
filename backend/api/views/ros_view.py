@@ -13,7 +13,7 @@ Endpoint:
 - GET /api/ros/latest: Get ROS score for last queried drug-disease pair
 """
 
-from fastapi import APIRouter, HTTPException, Response
+from fastapi import APIRouter, HTTPException, Query, Response 
 from pydantic import BaseModel
 from typing import Dict, Literal, Optional, Any
 from datetime import datetime
@@ -76,7 +76,7 @@ class ROSViewResponse(BaseModel):
 # ==============================================================================
 
 @router.get("/latest", response_model=ROSViewResponse)
-def get_latest_ros(response: Response):
+def get_latest_ros(query_id: Optional[str] = Query(None, description="Query ID to retrieve specific ROS results")):
     """
     Get ROS score for last queried drug-disease pair
 
@@ -111,11 +111,11 @@ def get_latest_ros(response: Response):
             )
 
         # Get ROS result from cache
-        ros_result = cache.get_last_ros_result()
+        ros_result = cache.get_last_ros_result(query_id)
 
         if ros_result is None:
             # Try to extract from last response
-            last_response = cache.get_last_response()
+            last_response = cache.get_last_response_by_id(query_id)
             if last_response and 'ros_results' in last_response:
                 ros_result = last_response['ros_results']
             else:
@@ -125,7 +125,7 @@ def get_latest_ros(response: Response):
                 )
 
         # Get drug/disease IDs
-        drug_id, disease_id = cache.get_last_drug_disease_ids()
+        drug_id, disease_id = cache.get_last_drug_disease_ids(query_id)
 
         # Extract drug/disease names from IDs or metadata
         # IDs are in format: canonical_id (hashed), so we extract from metadata if available

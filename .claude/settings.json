@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm start *)",
+      "Bash(echo \"Frontend PID: $!\")",
+      "Bash(curl -s http://localhost:3000)",
+      "Bash(tasklist //FI \"IMAGENAME eq node.exe\")",
+      "Bash(curl -s -o /dev/null -w \"Frontend HTTP status: %{http_code}\" http://localhost:3000)",
+      "Bash(curl -s -X POST http://localhost:8000/api/query -H \"Content-Type: application/json\" -d '{\"query\": \"semaglutide for alzheimers disease\"}' --max-time 10)",
+      "Bash(curl -s -X POST http://localhost:8000/api/query -H \"Content-Type: application/json\" -d '{\"query\": \"semaglutide for alzheimers disease\"}' --max-time 15 -w \"\\\\nHTTP_STATUS:%{http_code}\")"
+    ]
+  }
+}

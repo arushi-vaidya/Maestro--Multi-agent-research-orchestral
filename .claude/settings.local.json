@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(netstat -ano)",
+      "Bash(nohup \"/c/Users/dhruv/OneDrive/Desktop/src/Projects/main el 5th sem/MAESTRO---Multi-agent-Orchestration-with-AKGP-and-ROS/backend/venv311/Scripts/python.exe\" main.py)",
+      "Bash(echo \"Backend PID: $!\")",
+      "Bash(curl -s http://localhost:8000/health)",
+      "Bash(curl -s http://localhost:8000/)",
+      "Bash(taskkill /F /IM python.exe)",
+      "Bash(taskkill //F //IM python.exe)",
+      "Bash(python -c ' *)",
+      "Bash(echo \"Backend started PID: $!\")"
+    ]
+  }
+}

@@ -56,6 +56,7 @@ export const Hypothesis: React.FC = () => {
   const [executionData, setExecutionData] = useState<ExecutionStatusResponse | null>(null);
   const [rosData, setRosData] = useState<ROSViewResponse | null>(null);
   const [queryData, setQueryData] = useState<QueryResponse | null>(null);
+  const [currentQueryId, setCurrentQueryId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   
   // Polling ref to stop polling when complete
@@ -83,9 +84,11 @@ export const Hypothesis: React.FC = () => {
       // We start polling in parallel in useEffect
       const response = await api.submitQuery(query);
       setQueryData(response);
+      const queryId = response.query_id || 'latest';
+      setCurrentQueryId(response.query_id || null);
 
       // Once POST returns, we assume completion
-      await handleCompletion();
+      await handleCompletion(queryId, query);
       
     } catch (err: any) {
       console.error('Analysis failed:', err);
@@ -96,12 +99,12 @@ export const Hypothesis: React.FC = () => {
     }
   };
 
-  const handleCompletion = async () => {
+  const handleCompletion = async (queryId: string, queryText: string) => {
     try {
       // Fetch final states
       const [finalExecution, finalRos] = await Promise.all([
-        api.getExecutionStatus(),
-        api.getROSLatest()
+        api.getExecutionStatus(queryId),
+        api.getROSLatest(queryId)
       ]);
 
       setExecutionData(finalExecution);
@@ -110,7 +113,7 @@ export const Hypothesis: React.FC = () => {
       
       // Notify all pages that a new query has been completed
       console.log('[Hypothesis] Query completed, notifying pages...');
-      notifyQuerySubmitted();
+      notifyQuerySubmitted(queryId, queryText);
     } catch (err) {
       console.error('Failed to fetch results:', err);
       // Fallback: stay in executing or show partial error? 
@@ -126,7 +129,7 @@ export const Hypothesis: React.FC = () => {
     if (consoleState === 'EXECUTING') {
       const poll = async () => {
         try {
-          const status = await api.getExecutionStatus();
+          const status = await api.getExecutionStatus(currentQueryId || undefined);
           // Verify this status belongs to CURRENT query (by checking timestamp or active agents)
           // Since we can't easily check ID, we just display what we get.
           // If the backend is blocking, this might timeout or return old data.
@@ -148,7 +151,7 @@ export const Hypothesis: React.FC = () => {
         clearInterval(pollIntervalRef.current);
       }
     };
-  }, [consoleState]);
+  }, [consoleState, currentQueryId]);
 
   // --- RENDER HELPERS ---
 
@@ -162,13 +165,23 @@ export const Hypothesis: React.FC = () => {
   };
 
   const getAgentStatus = (agentId: string) => {
-    if (!executionData) return 'pending';
+    // During SUBMITTING or start of EXECUTING, show pending
+    if (!executionData || executionData.agents_triggered.length === 0) return 'pending';
+    
     if (executionData.agents_completed.includes(agentId)) return 'completed';
     if (executionData.agents_failed.includes(agentId)) return 'failed';
     if (executionData.agents_triggered.includes(agentId)) return 'running';
+    
     // If we are COMPLETED but agent not in triggered, it was skipped
     if (consoleState === 'COMPLETED') return 'skipped';
     return 'pending'; // Default during execution
+  };
+
+  const getAgentProgress = () => {
+    if (!executionData) return 0;
+    const total = executionData.agents_triggered.length || AGENTS.length;
+    const completed = executionData.agents_completed.length;
+    return Math.round((completed / total) * 100);
   };
 
   // --- UI SECTIONS ---
@@ -192,19 +205,24 @@ export const Hypothesis: React.FC = () => {
       </div>
 
       {/* 2. INPUT PANEL */}
-      <CalmCard className={`mb-8 transition-opacity duration-500 ${consoleState === 'COMPLETED' ? 'opacity-75' : 'opacity-100'}`}>
+      <CalmCard className={`mb-8 transition-opacity duration-500 border-2 border-orange-100 bg-orange-50/20 ${consoleState === 'COMPLETED' ? 'opacity-75' : 'opacity-100'}`}>
         <div className="mb-4">
-           <label className="block text-xs font-semibold text-warm-text-subtle uppercase tracking-wider mb-2 font-inter">
-             Research Hypothesis
-           </label>
+           <div className="flex items-center gap-2 mb-2">
+             <div className="w-2 h-2 rounded-full bg-orange-500" />
+             <label className="block text-xs font-semibold text-orange-900 uppercase tracking-wider font-inter">
+               Research Hypothesis
+             </label>
+           </div>
            <CalmInput 
              value={query}
              onChange={(val) => {
-               // When user starts typing a new query, clear old results
+               // When user starts typing a new query, clear old results immediately
                if (consoleState === 'COMPLETED') {
                  setExecutionData(null);
                  setRosData(null);
+                 setConsoleState('IDLE');
                }
+                setCurrentQueryId(null);
                setQuery(val);
              }}
              placeholder="e.g. Semaglutide for Alzheimer's disease"
@@ -239,9 +257,24 @@ export const Hypothesis: React.FC = () => {
       {/* 3. AGENT EXECUTION PANEL (Visible during & after execution) */}
       {(consoleState === 'EXECUTING' || consoleState === 'COMPLETED') && (
         <div className="mb-8 animate-calm-fade-in">
-          <h3 className="text-xs font-semibold text-warm-text-subtle uppercase tracking-wider mb-4 font-inter">
-            System Orchestration
-          </h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-xs font-semibold text-warm-text-subtle uppercase tracking-wider font-inter">
+              System Orchestration
+            </h3>
+            {consoleState === 'EXECUTING' && (
+              <div className="flex items-center gap-2">
+                <div className="w-32 h-1.5 bg-warm-divider rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-emerald-500 to-emerald-600 transition-all duration-300"
+                    style={{ width: `${getAgentProgress()}%` }}
+                  />
+                </div>
+                <span className="text-xs font-semibold text-emerald-600 font-inter min-w-[40px]">
+                  {getAgentProgress()}%
+                </span>
+              </div>
+            )}
+          </div>
           
           <CalmCard className="p-0 overflow-hidden border border-warm-border">
              {AGENTS.map((agent, idx) => {
@@ -252,66 +285,95 @@ export const Hypothesis: React.FC = () => {
                let statusColor = "text-warm-text-light";
                let statusIcon = <div className="w-2 h-2 rounded-full bg-warm-divider" />;
                let statusBg = "bg-white";
+               let accentColor = "bg-slate-50";
+               let progressPercent = 0;
 
                if (status === 'running') {
                  statusColor = "text-amber-600";
                  statusIcon = <div className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />;
                  statusBg = "bg-amber-50/30";
+                 accentColor = "bg-amber-50";
+                 progressPercent = 50; // In-progress
                } else if (status === 'completed') {
-                 statusColor = "text-sage-700";
-                 statusIcon = <CheckCircle2 className="w-4 h-4 text-sage-600" />;
-                 statusBg = "bg-sage-50/30";
+                 statusColor = "text-emerald-700";
+                 statusIcon = <CheckCircle2 className="w-4 h-4 text-emerald-600" />;
+                 statusBg = "bg-emerald-50/30";
+                 accentColor = "bg-emerald-50";
+                 progressPercent = 100; // Complete
                } else if (status === 'failed') {
                  statusColor = "text-rose-700";
                  statusIcon = <AlertCircle className="w-4 h-4 text-rose-600" />;
                  statusBg = "bg-rose-50/30";
+                 accentColor = "bg-rose-50";
                }
 
                return (
-                 <div key={agent.id} className={`flex items-center justify-between p-4 ${statusBg} ${!isLast ? 'border-b border-warm-divider' : ''}`}>
-                   <div className="flex items-center gap-4">
-                     <div className={`p-2 rounded-lg bg-white border border-warm-divider text-warm-text-subtle`}>
-                       <agent.icon className="w-4 h-4" />
+                 <div key={agent.id} className={`flex flex-col p-4 ${statusBg} ${!isLast ? 'border-b border-warm-divider' : ''}`}>
+                   <div className="flex items-center justify-between mb-3">
+                     <div className="flex items-center gap-4 flex-1">
+                       <div className={`p-2 rounded-lg border border-warm-divider ${accentColor}`}>
+                         <agent.icon className="w-4 h-4 text-warm-text-subtle" />
+                       </div>
+                       <div>
+                         <p className="text-sm font-semibold text-warm-text font-inter">{agent.label}</p>
+                         <p className={`text-xs font-medium font-inter capitalize ${statusColor}`}>
+                           {status === 'pending' ? 'Waiting...' : status}
+                         </p>
+                       </div>
                      </div>
-                     <div>
-                       <p className="text-sm font-semibold text-warm-text font-inter">{agent.label}</p>
-                       <p className="text-xs text-warm-text-light font-inter capitalize">
-                         {status === 'pending' ? 'Waiting...' : status}
-                       </p>
+                     
+                     <div className="flex items-center gap-6 text-right">
+                       {status === 'completed' && detail && (
+                         <>
+                           <div className="hidden sm:block">
+                             <p className="text-xs text-warm-text-subtle font-inter">Duration</p>
+                             <p className="text-sm font-medium text-warm-text font-inter">
+                               {detail.duration_ms ? `${(detail.duration_ms / 1000).toFixed(1)}s` : '-'}
+                             </p>
+                           </div>
+                           <div className="min-w-[80px]">
+                             <p className="text-xs text-warm-text-subtle font-inter">Results</p>
+                             <p className="text-sm font-medium text-warm-text font-inter">
+                               {detail.result_count ?? 0}
+                             </p>
+                           </div>
+                         </>
+                       )}
+                       <div className="w-6 flex justify-center">
+                         {statusIcon}
+                       </div>
                      </div>
                    </div>
                    
-                   <div className="flex items-center gap-6 text-right">
-                     {status === 'completed' && detail && (
-                       <>
-                         <div className="hidden sm:block">
-                           <p className="text-xs text-warm-text-subtle font-inter">Duration</p>
-                           <p className="text-sm font-medium text-warm-text font-inter">
-                             {detail.duration_ms ? `${(detail.duration_ms / 1000).toFixed(1)}s` : '-'}
-                           </p>
-                         </div>
-                         <div className="min-w-[80px]">
-                           <p className="text-xs text-warm-text-subtle font-inter">Results</p>
-                           <p className="text-sm font-medium text-warm-text font-inter">
-                             {detail.result_count ?? 0}
-                           </p>
-                         </div>
-                       </>
-                     )}
-                     <div className="w-6 flex justify-center">
-                       {statusIcon}
+                   {/* Progress bar */}
+                   {status !== 'pending' && (
+                     <div className="ml-12 h-1 bg-warm-divider rounded-full overflow-hidden">
+                       <div
+                         className={`h-full transition-all duration-300 ${
+                           status === 'completed'
+                             ? 'bg-gradient-to-r from-emerald-500 to-emerald-600'
+                             : status === 'running'
+                             ? 'bg-gradient-to-r from-amber-400 to-amber-500'
+                             : 'bg-gradient-to-r from-rose-500 to-rose-600'
+                         }`}
+                         style={{ width: `${progressPercent}%` }}
+                       />
                      </div>
-                   </div>
+                   )}
                  </div>
                );
              })}
              
              {/* Total System Time Footer */}
              {executionData?.execution_time_ms && (
-               <div className="px-4 py-2 bg-warm-bg-alt border-t border-warm-divider flex justify-end">
-                 <p className="text-xs text-warm-text-subtle font-inter flex items-center gap-2">
+               <div className="px-4 py-3 bg-emerald-50/40 border-t border-emerald-200 flex justify-between items-center">
+                 <div className="flex items-center gap-2">
+                   <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                   <span className="text-xs font-semibold text-emerald-700 font-inter">{executionData.agents_completed.length}/{executionData.agents_triggered.length} Agents Complete</span>
+                 </div>
+                 <p className="text-xs text-emerald-700 font-inter flex items-center gap-2 font-semibold">
                    <Clock className="w-3 h-3" />
-                   Total Execution Time: {(executionData.execution_time_ms / 1000).toFixed(1)}s
+                   {(executionData.execution_time_ms / 1000).toFixed(1)}s
                  </p>
                </div>
              )}
@@ -324,20 +386,194 @@ export const Hypothesis: React.FC = () => {
         <div className="animate-calm-fade-in space-y-8">
           
           <div className="flex items-center justify-between">
-            <h3 className="text-xs font-semibold text-warm-text-subtle uppercase tracking-wider font-inter">
-              Research Opportunity Score
-            </h3>
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-orange-500" />
+              <h3 className="text-xs font-semibold text-warm-text-subtle uppercase tracking-wider font-inter">
+                Research Opportunity Score
+              </h3>
+            </div>
             <span className="text-xs text-warm-text-light font-inter">Generated {new Date().toLocaleTimeString()}</span>
           </div>
 
           <ROSResultCard rosData={rosData} />
 
+          {/* 5b. DETAILED AGENT INSIGHTS SECTION */}
+          {queryData?.insights && queryData.insights.length > 0 && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-indigo-500" />
+                <h3 className="text-xs font-semibold text-warm-text-subtle uppercase tracking-wider font-inter">
+                  Agent Findings
+                </h3>
+              </div>
+              <div className="grid gap-4">
+                {queryData.insights.map((insight: any, idx: number) => {
+                  const bgColor = idx % 4 === 0 ? 'bg-blue-50/30 border-blue-100' : 
+                                 idx % 4 === 1 ? 'bg-emerald-50/30 border-emerald-100' :
+                                 idx % 4 === 2 ? 'bg-purple-50/30 border-purple-100' :
+                                 'bg-orange-50/30 border-orange-100';
+                  
+                  // Format the finding text into readable sections with markdown support
+                  const formatFinding = (text: string) => {
+                    // Split by numbered sections (e.g., "**1. OVERVIEW:**")
+                    const sections = text.split(/(?=\*\*\d+\.\s+[A-Z][A-Z\s]+:\*\*)/g);
+                    
+                    if (sections.length > 1) {
+                      // Has numbered sections
+                      return sections.map((section, i) => {
+                        const match = section.match(/^\*\*(\d+\.\s+[A-Z][A-Z\s]+:)\*\*(.*)/s);
+                        if (match) {
+                          // Process content for inline bold/italic
+                          const processInlineFormatting = (content: string) => {
+                            const parts: (string | React.ReactElement)[] = [];
+                            let currentText = content;
+                            let key = 0;
+                            
+                            // Replace **text** with bold
+                            const boldRegex = /\*\*([^*]+)\*\*/g;
+                            let lastIndex = 0;
+                            let boldMatch;
+                            
+                            while ((boldMatch = boldRegex.exec(currentText)) !== null) {
+                              // Add text before match
+                              if (boldMatch.index > lastIndex) {
+                                parts.push(currentText.slice(lastIndex, boldMatch.index));
+                              }
+                              // Add bold text
+                              parts.push(<strong key={key++} className="font-bold text-warm-text">{boldMatch[1]}</strong>);
+                              lastIndex = boldMatch.index + boldMatch[0].length;
+                            }
+                            
+                            // Add remaining text
+                            if (lastIndex < currentText.length) {
+                              parts.push(currentText.slice(lastIndex));
+                            }
+                            
+                            return parts.length > 0 ? parts : currentText;
+                          };
+                          
+                          return (
+                            <div key={i} className="mb-4 last:mb-0">
+                              <h5 className="text-sm font-bold text-warm-text uppercase tracking-wide mb-2 font-inter border-b border-warm-divider/20 pb-1">
+                                {match[1].trim()}
+                              </h5>
+                              <div className="text-sm text-warm-text-light leading-relaxed font-inter pl-2">
+                                {processInlineFormatting(match[2].trim())}
+                              </div>
+                            </div>
+                          );
+                        }
+                        return null;
+                      }).filter(Boolean);
+                    } else {
+                      // No clear sections - process as paragraph with inline formatting
+                      const processInlineFormatting = (content: string) => {
+                        const parts: (string | React.ReactElement)[] = [];
+                        let currentText = content;
+                        let key = 0;
+                        
+                        // Replace **text** with bold
+                        const boldRegex = /\*\*([^*]+)\*\*/g;
+                        let lastIndex = 0;
+                        let boldMatch;
+                        
+                        while ((boldMatch = boldRegex.exec(currentText)) !== null) {
+                          if (boldMatch.index > lastIndex) {
+                            parts.push(currentText.slice(lastIndex, boldMatch.index));
+                          }
+                          parts.push(<strong key={key++} className="font-bold text-warm-text">{boldMatch[1]}</strong>);
+                          lastIndex = boldMatch.index + boldMatch[0].length;
+                        }
+                        
+                        if (lastIndex < currentText.length) {
+                          parts.push(currentText.slice(lastIndex));
+                        }
+                        
+                        return parts.length > 0 ? parts : currentText;
+                      };
+                      
+                      // Split into paragraphs by double newline
+                      const paragraphs = text.split('\n\n').filter(p => p.trim());
+                      
+                      return paragraphs.map((para, i) => (
+                        <p key={i} className="text-sm text-warm-text-light leading-relaxed font-inter mb-3 last:mb-0">
+                          {processInlineFormatting(para.trim())}
+                        </p>
+                      ));
+                    }
+                  };
+                  
+                  return (
+                    <CalmCard key={idx} className={`border ${bgColor}`}>
+                      <div className="space-y-3">
+                        {/* Header */}
+                        <div className="flex items-center justify-between pb-2 border-b border-warm-divider/30">
+                          <h4 className="text-base font-bold text-warm-text font-inter">{insight.agent}</h4>
+                          <span className="text-xs bg-warm-surface-alt text-warm-text-subtle px-3 py-1.5 rounded-full font-semibold font-inter">
+                            {insight.confidence}% confidence
+                          </span>
+                        </div>
+                        
+                        {/* Metadata badges */}
+                        <div className="flex gap-2 text-xs font-inter flex-wrap">
+                          {insight.total_trials !== undefined && insight.total_trials > 0 && (
+                            <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-md font-medium">
+                              📋 {insight.total_trials} trials
+                            </span>
+                          )}
+                          {insight.sources_used && (
+                            <span className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded-md font-medium">
+                              📚 {(insight.sources_used as any).web || 0} web + {(insight.sources_used as any).internal || 0} internal
+                            </span>
+                          )}
+                          {insight.total_patents !== undefined && insight.total_patents > 0 && (
+                            <span className="px-2 py-1 bg-purple-100 text-purple-700 rounded-md font-medium">
+                              📄 {insight.total_patents} patents
+                            </span>
+                          )}
+                          {insight.total_publications !== undefined && insight.total_publications > 0 && (
+                            <span className="px-2 py-1 bg-orange-100 text-orange-700 rounded-md font-medium">
+                              📖 {insight.total_publications} publications
+                            </span>
+                          )}
+                        </div>
+                        
+                        {/* Finding content with smart formatting */}
+                        <div className="pt-2">
+                          {formatFinding(insight.finding)}
+                        </div>
+                      </div>
+                    </CalmCard>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* 5c. RECOMMENDATION SECTION */}
+          {queryData?.recommendation && (
+            <div className="space-y-4">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-sage-500" />
+                <h3 className="text-xs font-semibold text-warm-text-subtle uppercase tracking-wider font-inter">
+                  Recommendation
+                </h3>
+              </div>
+              <CalmCard className="bg-sage-50/30 border border-sage-100">
+                <p className="text-sm text-warm-text leading-relaxed font-inter">{queryData.recommendation}</p>
+              </CalmCard>
+            </div>
+          )}
+
           {/* 5. ENHANCED EXECUTIVE SUMMARY PANEL */}
           <div className="grid md:grid-cols-3 gap-6">
             <div className="md:col-span-2">
-               <h3 className="text-xs font-semibold text-warm-text-subtle uppercase tracking-wider mb-3 font-inter">
-                 Executive Summary
-               </h3>
+               <div className="flex items-center gap-2 mb-3">
+                 <div className="w-2 h-2 rounded-full bg-blue-500" />
+                 <h3 className="text-xs font-semibold text-warm-text-subtle uppercase tracking-wider font-inter">
+                   Executive Summary
+                 </h3>
+               </div>
                <CalmCard className="h-full">
                  <div className="space-y-4">
                    {/* Main Finding - COMPREHENSIVE SUMMARY */}
@@ -366,12 +602,23 @@ export const Hypothesis: React.FC = () => {
                    {/* Agent Contributions */}
                    {executionData && executionData.agent_details && executionData.agent_details.length > 0 && (
                      <div>
-                       <p className="text-xs font-semibold text-warm-text-subtle uppercase tracking-wide mb-2 font-inter">Agent Analysis Breakdown</p>
+                       <div className="flex items-center gap-2 mb-2">
+                         <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                         <p className="text-xs font-semibold text-warm-text-subtle uppercase tracking-wide font-inter">Agent Analysis Breakdown</p>
+                       </div>
                        <div className="space-y-2">
                          {executionData.agent_details.map((detail) => {
                            const agentLabel = AGENTS.find(a => a.id === detail.agent_id)?.label || detail.agent_id;
+                           const isCompleted = detail.status === 'completed';
                            return (
-                             <div key={detail.agent_id} className="flex items-start gap-3 p-2 bg-warm-bg-alt rounded border border-warm-divider">
+                             <div key={detail.agent_id} className={`flex items-start gap-3 p-2 rounded border transition-colors ${
+                               isCompleted
+                                 ? 'bg-emerald-50/50 border-emerald-200'
+                                 : 'bg-warm-bg-alt border-warm-divider'
+                             }`}>
+                               <div className={`w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0 ${
+                                 isCompleted ? 'bg-emerald-500' : 'bg-warm-divider'
+                               }`} />
                                <div className="flex-1">
                                  <p className="text-xs font-medium text-warm-text font-inter capitalize">{agentLabel}</p>
                                  <p className="text-xs text-warm-text-light font-inter mt-0.5">
@@ -392,7 +639,10 @@ export const Hypothesis: React.FC = () => {
                    {/* Evidence Summary */}
                    {rosData.metadata && (
                      <div>
-                       <p className="text-xs font-semibold text-warm-text-subtle uppercase tracking-wide mb-2 font-inter">Evidence Summary</p>
+                       <div className="flex items-center gap-2 mb-2">
+                         <div className="w-2 h-2 rounded-full bg-orange-500" />
+                         <p className="text-xs font-semibold text-warm-text-subtle uppercase tracking-wide font-inter">Evidence Quality Metrics</p>
+                       </div>
                        <div className="grid grid-cols-3 gap-2 text-xs">
                          <div className="p-2 bg-sage-50 border border-sage-100 rounded">
                            <p className="text-sage-700 font-semibold">{rosData.metadata.num_supporting_evidence || 0}</p>
@@ -429,34 +679,34 @@ export const Hypothesis: React.FC = () => {
             
             {/* 6. NAVIGATION AFFORDANCES */}
             <div>
-               <h3 className="text-xs font-semibold text-warm-text-subtle uppercase tracking-wider mb-3 font-inter">
-                 Deep Dive
-               </h3>
+               <div className="flex items-center gap-2 mb-3">
+                 <div className="w-2 h-2 rounded-full bg-indigo-500" />
+                 <h3 className="text-xs font-semibold text-warm-text-subtle uppercase tracking-wider font-inter">
+                   Deep Dive
+                 </h3>
+               </div>
                <div className="space-y-3">
-                 <CalmButton 
-                   variant="secondary" 
-                   className="w-full justify-between group"
+                 <button
+                   className="w-full flex items-center justify-between px-4 py-3 rounded-lg font-medium text-sm transition-all font-inter bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-md hover:shadow-lg"
                    onClick={() => navigate('/timeline')}
                  >
                    <span>Evidence Timeline</span>
-                   <ArrowRight className="w-4 h-4 opacity-0 group-hover:opacity-100 transition-opacity" />
-                 </CalmButton>
-                 <CalmButton 
-                   variant="secondary" 
-                   className="w-full justify-between group"
+                   <ArrowRight className="w-4 h-4" />
+                 </button>
+                 <button
+                   className="w-full flex items-center justify-between px-4 py-3 rounded-lg font-medium text-sm transition-all font-inter bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white shadow-md hover:shadow-lg"
                    onClick={() => navigate('/graph')}
                  >
                    <span>Knowledge Graph</span>
-                   <Database className="w-4 h-4 opacity-50" />
-                 </CalmButton>
-                 <CalmButton 
-                   variant="secondary" 
-                   className="w-full justify-between group"
+                   <Database className="w-4 h-4" />
+                 </button>
+                 <button
+                   className="w-full flex items-center justify-between px-4 py-3 rounded-lg font-medium text-sm transition-all font-inter bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white shadow-md hover:shadow-lg"
                    onClick={() => navigate('/conflicts')}
                  >
                    <span>Conflict Analysis</span>
-                   <AlertCircle className="w-4 h-4 opacity-50" />
-                 </CalmButton>
+                   <AlertCircle className="w-4 h-4" />
+                 </button>
                </div>
             </div>
           </div>

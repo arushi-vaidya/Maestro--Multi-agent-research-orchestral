@@ -3,9 +3,10 @@
  * GET /api/ros/latest, /api/execution/status, /api/conflicts/explanation, /api/evidence/timeline
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { PageContainer, CalmCard, CalmBadge, CalmButton } from '../../components/calm';
 import { api } from '../../services/api';
+import { useQueryRefresh } from '../../context/QueryContext';
 import type {
   ROSViewResponse,
   ExecutionStatusResponse,
@@ -15,6 +16,8 @@ import type {
 import { Scale, AlertTriangle, Loader2, RefreshCw, ArrowRight } from 'lucide-react';
 
 export const ConfidenceScoring: React.FC = () => {
+  const { queryCount, lastQueryId, lastQueryText } = useQueryRefresh();
+  
   const [rosData, setRosData] = useState<ROSViewResponse | null>(null);
   const [executionData, setExecutionData] = useState<ExecutionStatusResponse | null>(null); // Fetched but not currently displayed
   const [conflictData, setConflictData] = useState<ConflictExplanationResponse | null>(null);
@@ -22,38 +25,73 @@ export const ConfidenceScoring: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch all required data on component mount
+  // Fetch all required data on mount and when query changes
   useEffect(() => {
+    const queryId = lastQueryId || undefined;
+    const fetchAllData = async () => {
+      console.log('[ConfidenceScoring] Fetching confidence data (queryCount:', queryCount, ', queryId:', queryId, ')');
+      setLoading(true);
+      setError(null);
+      
+      // Clear old data before fetching new data
+      setRosData(null);
+      setExecutionData(null);
+      setConflictData(null);
+      setEvidenceData(null);
+
+      try {
+        // Fetch ROS data - required, will throw if not available
+        const ros = await api.getROSLatest(queryId);
+        console.log('[ConfidenceScoring] ROS data loaded:', ros);
+        setRosData(ros);
+
+        // Fetch execution status - optional
+        try {
+          const exec = await api.getExecutionStatus(queryId);
+          console.log('[ConfidenceScoring] Execution data loaded:', exec);
+          setExecutionData(exec);
+        } catch (err) {
+          // Execution status is optional, continue if it fails
+          console.warn('[ConfidenceScoring] Execution status not available:', err);
+        }
+
+        // Fetch conflict data - optional
+        try {
+          const conflict = await api.getConflictExplanation(queryId);
+          console.log('[ConfidenceScoring] Conflict data loaded:', conflict);
+          setConflictData(conflict);
+        } catch (err) {
+          // Conflict data is optional, continue if it fails
+          console.warn('[ConfidenceScoring] Conflict explanation not available:', err);
+        }
+
+        // Fetch evidence timeline - optional
+        try {
+          const evidence = await api.getEvidenceTimeline(100, undefined, undefined, queryId);
+          console.log('[ConfidenceScoring] Evidence timeline loaded:', evidence);
+          setEvidenceData(evidence);
+        } catch (err) {
+          // Evidence timeline is optional, continue if it fails
+          console.warn('[ConfidenceScoring] Evidence timeline not available:', err);
+        }
+
+        setLoading(false);
+      } catch (err: any) {
+        console.error('[ConfidenceScoring] Error fetching data:', err);
+        setError(err?.response?.data?.detail || err.message || 'No data available. Please execute a query first.');
+        setLoading(false);
+      }
+    };
+
     fetchAllData();
-  }, []);
+  }, [queryCount, lastQueryId]);
 
-  const fetchAllData = async () => {
-    setLoading(true);
-    setError(null);
-
-    try {
-      // Fetch ROS data
-      const ros = await api.getROSLatest();
-      setRosData(ros);
-
-      // Fetch execution status
-      const exec = await api.getExecutionStatus();
-      setExecutionData(exec);
-
-      // Fetch conflict data
-      const conflict = await api.getConflictExplanation();
-      setConflictData(conflict);
-
-      // Fetch evidence timeline
-      const evidence = await api.getEvidenceTimeline();
-      setEvidenceData(evidence);
-
-      setLoading(false);
-    } catch (err: any) {
-      setError(err?.response?.data?.detail || err.message || 'Failed to load confidence scoring data');
-      setLoading(false);
+  const queryLabel = useMemo(() => {
+    if (lastQueryText && lastQueryText.trim()) {
+      return lastQueryText.length > 80 ? `${lastQueryText.slice(0, 77)}...` : lastQueryText;
     }
-  };
+    return 'Most recent query';
+  }, [lastQueryText]);
 
   // Calculate score factors from ROS breakdown
   const getScoreFactors = () => {
@@ -112,8 +150,11 @@ export const ConfidenceScoring: React.FC = () => {
     }
 
     if (rosData?.metadata) {
-      const supportRatio = rosData.metadata.num_supporting_evidence /
-        (rosData.metadata.num_supporting_evidence + rosData.metadata.num_contradicting_evidence);
+      const totalEvidence =
+        rosData.metadata.num_supporting_evidence + rosData.metadata.num_contradicting_evidence;
+      const supportRatio = totalEvidence > 0
+        ? rosData.metadata.num_supporting_evidence / totalEvidence
+        : 0;
 
       sources.push({
         category: 'Evidence Consensus',
@@ -161,15 +202,15 @@ export const ConfidenceScoring: React.FC = () => {
   }
 
   // Error state
-  if (error) {
+  if (error || !rosData) {
     return (
       <PageContainer maxWidth="lg">
         <div className="min-h-screen bg-warm-bg flex items-center justify-center">
           <div className="text-center max-w-md">
             <AlertTriangle className="w-12 h-12 text-terracotta-400 mx-auto mb-4" />
-            <h2 className="text-lg font-semibold text-warm-text mb-2">No Data Available</h2>
-            <p className="text-warm-text-light mb-6">{error}</p>
-            <CalmButton onClick={fetchAllData}>
+            <h2 className="text-lg font-semibold text-warm-text mb-2 font-inter">No Data Available</h2>
+            <p className="text-warm-text-light mb-6 font-inter">{error || 'No ROS data available'}</p>
+            <CalmButton onClick={() => window.location.reload()}>
               <RefreshCw className="w-4 h-4 mr-2" />
               Retry
             </CalmButton>
@@ -196,13 +237,17 @@ export const ConfidenceScoring: React.FC = () => {
             Confidence Scoring
           </h1>
         </div>
-        <p className="text-lg text-warm-text-light font-inter ml-13">
+        <p className="text-lg text-warm-text-light font-inter ml-[52px]">
           Understand the factors contributing to hypothesis confidence scores
         </p>
       </div>
 
       {/* Current Query Info */}
       <CalmCard className="mb-8">
+        <div className="flex items-center gap-3 text-sm mb-2">
+          <span className="px-2 py-1 rounded-md bg-orange-50 text-orange-700 border border-orange-100 font-medium">Query</span>
+          <span className="font-medium text-warm-text">{queryLabel}</span>
+        </div>
         <div className="flex items-center gap-2 text-sm">
           <span className="text-warm-text-light">Current Analysis:</span>
           <span className="font-medium text-warm-text">{rosData?.drug}</span>
@@ -218,7 +263,7 @@ export const ConfidenceScoring: React.FC = () => {
       <div className="grid lg:grid-cols-12 gap-8">
         {/* Score Overview */}
         <div className="lg:col-span-4">
-          <CalmCard className="sticky top-24">
+          <CalmCard className="sticky top-24 border-2 border-blue-200 bg-blue-50/30">
             {/* Main Score */}
             <div className="text-center mb-6 pb-6 border-b border-warm-divider">
               <p className="text-sm font-medium text-warm-text-light uppercase tracking-wider mb-4">
@@ -290,7 +335,7 @@ export const ConfidenceScoring: React.FC = () => {
         <div className="lg:col-span-8">
           <div className="space-y-6">
             {/* Score Breakdown */}
-            <CalmCard>
+            <CalmCard className="border-2 border-purple-200 bg-purple-50/20">
               <h3 className="text-sm font-medium text-warm-text-light uppercase tracking-wider mb-6">
                 Contributing Factors
               </h3>
@@ -301,7 +346,7 @@ export const ConfidenceScoring: React.FC = () => {
                     <div className="flex items-start justify-between mb-2">
                       <span className="font-medium text-warm-text">{factor.name}</span>
                       <span className={`font-semibold ${
-                        factor.weight > 0 ? 'text-sage-600' : 'text-terracotta-600'
+                        factor.weight > 0 ? 'text-emerald-600' : 'text-orange-600'
                       }`}>
                         {factor.weight > 0 ? '+' : ''}{factor.weight.toFixed(1)}
                       </span>
@@ -311,7 +356,7 @@ export const ConfidenceScoring: React.FC = () => {
                     {/* Visual bar */}
                     <div className="mt-2 h-2 bg-warm-surface-alt rounded-full overflow-hidden">
                       <div
-                        className={`h-full ${factor.weight > 0 ? 'bg-sage-500' : 'bg-terracotta-400'}`}
+                        className={`h-full ${factor.weight > 0 ? 'bg-emerald-500' : 'bg-orange-500'}`}
                         style={{ width: `${Math.min(Math.abs(factor.weight) * 10, 100)}%` }}
                       />
                     </div>
@@ -334,7 +379,7 @@ export const ConfidenceScoring: React.FC = () => {
             </CalmCard>
 
             {/* Uncertainty Sources */}
-            <CalmCard>
+            <CalmCard className="border-2 border-rose-200 bg-rose-50/20">
               <h3 className="text-sm font-medium text-warm-text-light uppercase tracking-wider mb-6">
                 Sources of Uncertainty
               </h3>
@@ -376,7 +421,7 @@ export const ConfidenceScoring: React.FC = () => {
             </CalmCard>
 
             {/* Evidence Summary */}
-            <CalmCard>
+            <CalmCard className="border-2 border-teal-200 bg-teal-50/20">
               <h3 className="text-sm font-medium text-warm-text-light uppercase tracking-wider mb-6">
                 Evidence by Agent
               </h3>
@@ -404,30 +449,30 @@ export const ConfidenceScoring: React.FC = () => {
                     {/* Stacked bar */}
                     <div className="h-3 bg-warm-surface-alt rounded-full overflow-hidden flex">
                       <div
-                        className="bg-sage-500 h-full"
+                        className="bg-emerald-500 h-full"
                         style={{ width: `${(item.positive / item.count) * 100}%` }}
                       />
                       <div
-                        className="bg-warm-surface-alt h-full"
+                        className="bg-yellow-300 h-full"
                         style={{ width: `${(item.neutral / item.count) * 100}%` }}
                       />
                       <div
-                        className="bg-terracotta-400 h-full"
+                        className="bg-orange-500 h-full"
                         style={{ width: `${(item.negative / item.count) * 100}%` }}
                       />
                     </div>
 
                     <div className="flex items-center gap-4 mt-2 text-xs text-warm-text-light">
                       <span className="flex items-center gap-1">
-                        <span className="w-2 h-2 rounded-full bg-sage-500" />
+                        <span className="w-2 h-2 rounded-full bg-emerald-500" />
                         {item.positive} positive
                       </span>
                       <span className="flex items-center gap-1">
-                        <span className="w-2 h-2 rounded-full bg-warm-surface-alt" />
+                        <span className="w-2 h-2 rounded-full bg-yellow-300" />
                         {item.neutral} neutral
                       </span>
                       <span className="flex items-center gap-1">
-                        <span className="w-2 h-2 rounded-full bg-terracotta-400" />
+                        <span className="w-2 h-2 rounded-full bg-orange-500" />
                         {item.negative} negative
                       </span>
                     </div>

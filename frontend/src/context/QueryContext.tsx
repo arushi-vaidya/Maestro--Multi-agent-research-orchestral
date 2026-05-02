@@ -11,7 +11,9 @@ import React, { createContext, useContext, useState, useCallback } from 'react';
 interface QueryContextType {
   queryCount: number;
   lastQueryTime: number;
-  notifyQuerySubmitted: () => void;
+  lastQueryId: string | null;
+  lastQueryText: string | null;
+  notifyQuerySubmitted: (queryId: string, queryText: string) => void;
 }
 
 const QueryContext = createContext<QueryContextType | undefined>(undefined);
@@ -19,15 +21,34 @@ const QueryContext = createContext<QueryContextType | undefined>(undefined);
 export const QueryProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [queryCount, setQueryCount] = useState(0);
   const [lastQueryTime, setLastQueryTime] = useState(Date.now());
+  const [lastQueryId, setLastQueryId] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    return localStorage.getItem('maestro:lastQueryId');
+  });
+  const [lastQueryText, setLastQueryText] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null;
+    return localStorage.getItem('maestro:lastQueryText');
+  });
 
-  const notifyQuerySubmitted = useCallback(() => {
+  const notifyQuerySubmitted = useCallback((queryId: string, queryText: string) => {
     setQueryCount(prev => prev + 1);
     setLastQueryTime(Date.now());
+    setLastQueryId(queryId);
+    setLastQueryText(queryText);
+
+    try {
+      localStorage.setItem('maestro:lastQueryId', queryId);
+      localStorage.setItem('maestro:lastQueryText', queryText);
+    } catch (err) {
+      console.warn('Unable to persist query id/text', err);
+    }
   }, []);
 
   const value: QueryContextType = {
     queryCount,
     lastQueryTime,
+    lastQueryId,
+    lastQueryText,
     notifyQuerySubmitted,
   };
 

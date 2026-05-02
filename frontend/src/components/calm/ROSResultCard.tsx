@@ -42,12 +42,14 @@ export const ROSResultCard: React.FC<ROSResultCardProps> = ({ rosData }) => {
   const metadata = rosData.metadata || {};
 
   return (
-    <CalmCard className="mb-8 border border-warm-divider">
+    <CalmCard className="mb-8 border-2 border-orange-200 bg-gradient-to-br from-orange-50/30 to-transparent">
       {/* Header */}
-      <div className="flex items-start justify-between mb-6 pb-4 border-b border-warm-divider">
+      <div className="flex items-start justify-between mb-6 pb-4 border-b border-orange-100">
         <div className="flex items-center gap-3">
-          <CheckCircle className="w-5 h-5 text-sage-600 flex-shrink-0" />
-          <h3 className="text-sm font-semibold text-warm-text font-inter uppercase tracking-wide">
+          <div className="p-2 bg-orange-100 rounded-lg">
+            <CheckCircle className="w-5 h-5 text-orange-600" />
+          </div>
+          <h3 className="text-sm font-semibold text-orange-900 font-inter uppercase tracking-wide">
             Research Opportunity Score
           </h3>
         </div>
@@ -199,36 +201,36 @@ export const ROSResultCard: React.FC<ROSResultCardProps> = ({ rosData }) => {
 
       {/* Metadata */}
       {metadata && (
-        <div className="grid md:grid-cols-4 gap-4 pt-4 border-t border-warm-divider">
-          <div>
-            <p className="text-xs text-warm-text-subtle font-inter uppercase tracking-wide mb-1">
-              Supporting Evidence
+        <div className="grid md:grid-cols-4 gap-3 pt-4 border-t border-warm-divider">
+          <div className="bg-emerald-50 rounded-lg p-3 border border-emerald-100">
+            <p className="text-xs text-emerald-700 font-inter uppercase tracking-wide font-semibold mb-1">
+              Supporting
             </p>
-            <p className="text-lg font-bold text-sage-700 font-inter">
+            <p className="text-2xl font-bold text-emerald-600 font-inter">
               {metadata.num_supporting_evidence || 0}
             </p>
           </div>
-          <div>
-            <p className="text-xs text-warm-text-subtle font-inter uppercase tracking-wide mb-1">
-              Contradicting Evidence
+          <div className="bg-rose-50 rounded-lg p-3 border border-rose-100">
+            <p className="text-xs text-rose-700 font-inter uppercase tracking-wide font-semibold mb-1">
+              Contradicting
             </p>
-            <p className="text-lg font-bold text-rose-700 font-inter">
+            <p className="text-2xl font-bold text-rose-600 font-inter">
               {metadata.num_contradicting_evidence || 0}
             </p>
           </div>
-          <div>
-            <p className="text-xs text-warm-text-subtle font-inter uppercase tracking-wide mb-1">
-              Active Agents
+          <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
+            <p className="text-xs text-blue-700 font-inter uppercase tracking-wide font-semibold mb-1">
+              Agents
             </p>
-            <p className="text-lg font-bold text-blue-700 font-inter">
+            <p className="text-2xl font-bold text-blue-600 font-inter">
               {(metadata.distinct_agents && metadata.distinct_agents.length) || 0}
             </p>
           </div>
-          <div>
-            <p className="text-xs text-warm-text-subtle font-inter uppercase tracking-wide mb-1">
+          <div className="bg-purple-50 rounded-lg p-3 border border-purple-100">
+            <p className="text-xs text-purple-700 font-inter uppercase tracking-wide font-semibold mb-1">
               Analysis Time
             </p>
-            <p className="text-sm text-warm-text font-inter">
+            <p className="text-sm text-purple-700 font-inter font-medium">
               {metadata.computation_timestamp
                 ? new Date(metadata.computation_timestamp).toLocaleTimeString()
                 : 'N/A'}
