@@ -360,7 +360,7 @@ Trial {nct_id}:
     def _generate_with_gemini(self, keywords: str, total_trials: int, trials_text: str, trials_data: dict) -> str:
         """Generate summary using Google Gemini API"""
         logger.info("Attempting to generate summary with Gemini")
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key={self.gemini_api_key}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={self.gemini_api_key}"
         headers = {"Content-Type": "application/json"}
         
         prompt = f"""You are a medical research analyst conducting a comprehensive literature review. Analyze the following clinical trials data and provide a detailed, well-structured summary suitable for academic literature review.
@@ -519,7 +519,7 @@ Major insights, future directions.
 REMEMBER: Output only plain text with headings in UPPERCASE, one blank line after each heading, then content. No markdown, no asterisks, no special formatting."""
 
         payload = {
-            "model": "mixtral-8x7b-32768",
+            "model": "llama-3.1-70b-versatile",
             "messages": [
                 {
                     "role": "system",

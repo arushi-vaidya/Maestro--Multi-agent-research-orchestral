@@ -99,7 +99,7 @@ class ConflictExplanationResponse(BaseModel):
 # ==============================================================================
 
 @router.get("/explanation", response_model=ConflictExplanationResponse)
-def get_conflict_explanation(query_id: Optional[str] = Query(None, description="Query ID to retrieve specific conflict analysis")):
+def get_conflict_explanation(response: Response, query_id: Optional[str] = Query(None, description="Query ID to retrieve specific conflict analysis")):
     """
     Get conflict explanation for last queried drug-disease pair
 

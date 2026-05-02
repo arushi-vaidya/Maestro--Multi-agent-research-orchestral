@@ -18,5 +18,4 @@ tqdm>=4.66.0
 
 ddgs
 duckduckgo_search>=2.7.1
-bing-search-api>=0.3.5
 serpapi>=0.4.3

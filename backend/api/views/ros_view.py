@@ -76,7 +76,10 @@ class ROSViewResponse(BaseModel):
 # ==============================================================================
 
 @router.get("/latest", response_model=ROSViewResponse)
-def get_latest_ros(query_id: Optional[str] = Query(None, description="Query ID to retrieve specific ROS results")):
+def get_latest_ros(
+    response: Response,
+    query_id: Optional[str] = Query(None, description="Query ID to retrieve specific ROS results")
+):
     """
     Get ROS score for last queried drug-disease pair
 
@@ -101,13 +104,15 @@ def get_latest_ros(query_id: Optional[str] = Query(None, description="Query ID t
 
         cache = get_cache()
 
-        # Check if cache has data
+        # Check if cache has data - return pending status instead of 404
         if cache.is_empty():
-            # Log at debug level since this is expected during polling
-            logger.debug("ROS results requested but cache is empty (no query executed yet)")
-            raise HTTPException(
-                status_code=404,
-                detail="No ROS results available. Execute a query via POST /api/query first."
+            logger.debug("ROS results requested but cache is empty (query still processing)")
+            return ROSViewResponse(
+                score=0.0,
+                score_breakdown={},
+                explanation="Query processing...",
+                component_scores={},
+                metadata={"status": "pending", "message": "Waiting for query results"}
             )
 
         # Get ROS result from cache
@@ -119,9 +124,14 @@ def get_latest_ros(query_id: Optional[str] = Query(None, description="Query ID t
             if last_response and 'ros_results' in last_response:
                 ros_result = last_response['ros_results']
             else:
-                raise HTTPException(
-                    status_code=404,
-                    detail="ROS computation not available for last query. The query may not have contained a drug-disease pair."
+                # Return pending instead of 404
+                logger.debug("ROS computation not available yet")
+                return ROSViewResponse(
+                    score=0.0,
+                    score_breakdown={},
+                    explanation="ROS computation pending...",
+                    component_scores={},
+                    metadata={"status": "pending", "message": "Query may not contain drug-disease pair or still processing"}
                 )
 
         # Get drug/disease IDs

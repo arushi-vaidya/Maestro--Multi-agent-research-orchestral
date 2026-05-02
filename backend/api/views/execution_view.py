@@ -95,7 +95,10 @@ class ExecutionStatusResponse(BaseModel):
 # ==============================================================================
 
 @router.get("/status", response_model=ExecutionStatusResponse)
-def get_execution_status(query_id: Optional[str] = Query(None, description="Query ID to retrieve specific execution status")):
+def get_execution_status(
+    response: Response,
+    query_id: Optional[str] = Query(None, description="Query ID to retrieve specific execution status")
+):
     """
     Get execution status for last query
 
@@ -120,29 +123,24 @@ def get_execution_status(query_id: Optional[str] = Query(None, description="Quer
 
         cache = get_cache()
 
-        # If no execution yet, return an empty-but-valid payload so UI doesn't spam 404s
-        if cache.is_empty():
-          logger.debug(
-              "Execution status requested but cache is empty (no query executed yet)"
-          )
-          raise HTTPException(
-              status_code=404,
-              detail={
-                  "error": "No execution data available",
-                  "message": "No query has been executed yet. Please submit a query via POST /api/query first.",
-                  "suggestion": "This is normal on initial page load or before the first query."
-              }
-          )
-
-
         # Get execution metadata from cache
         execution_metadata = cache.get_last_execution_metadata(query_id)
         last_response = cache.get_last_response_by_id(query_id)
 
-        if not execution_metadata and not last_response:
-            raise HTTPException(
-                status_code=404,
-                detail="Execution metadata not available."
+        # If no execution yet, return a "processing" status to prevent 404 spam
+        if cache.is_empty() or (not execution_metadata and not last_response):
+            logger.debug(
+                "Execution status requested but no data available (query still processing or not started)"
+            )
+            return ExecutionStatusResponse(
+                agents_triggered=[],
+                agents_completed=[],
+                agents_failed=[],
+                agent_details=[],
+                ingestion_summary={"total_evidence": 0, "ingested_evidence": 0, "rejected_evidence": 0},
+                execution_time_ms=0,
+                query_timestamp=datetime.utcnow().isoformat(),
+                metadata={"status": "pending", "message": "Query processing or waiting to start"}
             )
 
         # Extract agent execution status from response

@@ -639,7 +639,7 @@ class PatentAgent:
         """Generate summary with Gemini"""
         logger.info("Generating summary with Gemini")
 
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key={self.gemini_api_key}"
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={self.gemini_api_key}"
         headers = {"Content-Type": "application/json"}
 
         prompt = f"""You are a patent intelligence analyst. Analyze the following patent landscape data and provide a comprehensive report.

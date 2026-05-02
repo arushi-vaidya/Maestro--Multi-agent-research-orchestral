@@ -350,7 +350,7 @@ class LiteratureAgent:
         # Try Gemini first
         if self.gemini_api_key:
             try:
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key={self.gemini_api_key}"
+                url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={self.gemini_api_key}"
                 headers = {"Content-Type": "application/json"}
 
                 prompt = f"""Analyze this biomedical literature for: {keywords}

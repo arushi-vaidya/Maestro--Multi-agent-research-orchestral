@@ -1151,7 +1151,7 @@ STYLE RULES:
         if gemini_api_key:
             for attempt in range(MAX_RETRIES):
                 try:
-                    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key={gemini_api_key}"
+                    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={gemini_api_key}"
                     payload = {
                         "contents": [{"parts": [{"text": synthesis_prompt}]}],
                         "generationConfig": {"temperature": 0.3, "maxOutputTokens": 4000}
