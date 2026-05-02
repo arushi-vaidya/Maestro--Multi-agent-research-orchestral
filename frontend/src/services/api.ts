@@ -31,7 +31,8 @@ class MaestroAPIClient {
         'Pragma': 'no-cache',
         'Expires': '0',
       },
-      timeout: 120000, // 2 minutes for long-running queries
+      // Increase timeout to tolerate slower multi-agent runs and external APIs
+      timeout: 300000, // 5 minutes
     });
   }
 

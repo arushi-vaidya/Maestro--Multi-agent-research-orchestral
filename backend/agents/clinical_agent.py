@@ -41,7 +41,8 @@ class ClinicalAgent:
         }
         try:
             logger.info("Sending request to Groq API for keyword extraction")
-            response = requests.post(url, json=payload, headers=headers, timeout=10)
+            # Bumped timeout to reduce transient failures on slower networks
+            response = requests.post(url, json=payload, headers=headers, timeout=20)
             response.raise_for_status()
             keywords = response.json().get("choices", [{}])[0].get("message", {}).get("content", "").strip()
 
@@ -116,7 +117,8 @@ class ClinicalAgent:
         logger.info(f"Request params: {params}")
 
         try:
-            response = requests.get(url, params=params, timeout=100)
+            # Allow more time for larger result sets; ClinicalTrials.gov can be slow
+            response = requests.get(url, params=params, timeout=180)
             response.raise_for_status()
             data = response.json()
             trial_count = len(data.get('studies', []))
@@ -133,7 +135,8 @@ class ClinicalAgent:
     def get_trial_details(self, nct_id: str) -> dict:
         logger.info(f"Fetching detailed information for trial: {nct_id}")
         url = f"https://clinicaltrials.gov/api/v2/studies/{nct_id}"
-        response = requests.get(url, timeout=10)
+        # Increase timeout for detail fetch to handle slower API responses
+        response = requests.get(url, timeout=20)
         response.raise_for_status()
         logger.info(f"Successfully retrieved details for trial: {nct_id}")
         return response.json()
