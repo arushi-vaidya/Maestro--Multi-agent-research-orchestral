@@ -20,14 +20,31 @@ Factors:
 
 import logging
 import math
+import os
 from typing import Dict, List, Any, Optional
 from datetime import datetime
+import google.generativeai as genai
+from dotenv import load_dotenv
 from ros.ros_config import (
     WEIGHTS, EVIDENCE_STRENGTH, EVIDENCE_DIVERSITY, RECENCY_BOOST,
     NOVELTY_FACTOR, CONFLICT_PENALTY, PATENT_RISK, CLAMPING, DEBUG
 )
 
 logger = logging.getLogger(__name__)
+
+# Load environment variables from .env
+load_dotenv()
+
+# Initialize Gemini with API key from .env
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "")
+if GOOGLE_API_KEY:
+    try:
+        genai.configure(api_key=GOOGLE_API_KEY)
+        logger.info("✅ Gemini API initialized with API key from .env")
+    except Exception as e:
+        logger.warning(f"⚠️  Could not configure Gemini: {e}")
+else:
+    logger.warning("⚠️  GOOGLE_API_KEY not set in .env - Gemini ROS scoring will not be available")
 
 
 class ROSScorer:
@@ -421,6 +438,23 @@ class ROSScorer:
         
         return penalty
     
+    def _strip_markdown(self, text: str) -> str:
+        """Strip markdown formatting from text"""
+        import re
+        # Remove bold/italic markers
+        text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)  # **text** -> text
+        text = re.sub(r'\*(.+?)\*', r'\1', text)      # *text* -> text
+        text = re.sub(r'__(.+?)__', r'\1', text)       # __text__ -> text
+        text = re.sub(r'_(.+?)_', r'\1', text)         # _text_ -> text
+        # Remove heading markers
+        text = re.sub(r'^#+\s', '', text, flags=re.MULTILINE)  # # Heading -> Heading
+        # Remove numbered/bullet lists markers and indentation
+        text = re.sub(r'^\s*\d+\.\s', '', text, flags=re.MULTILINE)  # 1. text -> text
+        text = re.sub(r'^\s*[-*]\s', '', text, flags=re.MULTILINE)   # - text -> text
+        # Clean up excessive whitespace
+        text = re.sub(r'\n{3,}', '\n\n', text)  # Multiple newlines -> 2 newlines
+        return text.strip()
+    
     def _get_confidence_level(self, ros_score: float) -> str:
         """Map ROS score to confidence level"""
         if ros_score >= 8.0:
@@ -467,6 +501,222 @@ class ROSScorer:
         base += f" Analysis based on {ref_count} evidence sources across multiple types."
         
         return base
+    
+    def calculate_ros_with_gemini(
+        self,
+        query: str,
+        references: List[Dict[str, Any]],
+        insights: List[Dict[str, Any]],
+        akgp_stats: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Calculate ROS score using Gemini's own knowledge (no evidence data passed).
+        
+        Extracts drug and disease from query, then asks Gemini to evaluate based on:
+        - Mechanism of action of the drug
+        - Pathophysiology of the disease
+        - Known efficacy and risks
+        - Market saturation from training data
+        
+        Returns both Gemini's score and reasoning.
+        """
+        if not GOOGLE_API_KEY:
+            logger.warning("[ROS] GOOGLE_API_KEY not set, falling back to deterministic scoring")
+            return self.calculate_ros(query, references, insights, akgp_stats)
+        
+        try:
+            # Extract drug and disease
+            drug_name, disease_name = self._extract_drug_disease(query)
+            
+            # Build brutally honest prompt using only Gemini's own knowledge
+            system_prompt = """You are a brutally honest pharmaceutical research analyst with deep expertise in pharmacology, pathophysiology, and drug mechanisms.
+
+Your job is to evaluate research opportunities using YOUR OWN KNOWLEDGE:
+- Does the drug's mechanism of action actually address the disease?
+- Is there ANY scientific basis for this combination?
+- What does your knowledge tell you about efficacy potential?
+- What is the current market saturation for this indication?
+- Are there approved competitors already?
+
+SCORING GUIDE (BE BRUTALLY HONEST):
+- 9-10: Exceptional opportunity (rare). Novel, scientifically sound, clear unmet need.
+- 7-8: Good opportunity. Mechanism makes sense, some market gap, feasible.
+- 5-6: Moderate opportunity. Some scientific basis, but limited novelty or questionable mechanism.
+- 3-4: Weak opportunity. Questionable mechanism OR saturated market.
+- 0-2: Poor opportunity. NO scientific basis OR clearly wrong mechanism/indication combo.
+
+CRITICAL: If the drug-disease combination doesn't make sense pharmacologically, give it a LOW score.
+Don't be influenced by trial volume - score based on SCIENTIFIC MERIT first."""
+
+            user_prompt = f"""Using YOUR KNOWLEDGE, evaluate this research opportunity:
+
+DRUG: {drug_name}
+DISEASE: {disease_name}
+QUERY: {query}
+
+Based on what you know about:
+1. {drug_name}'s mechanism of action
+2. {disease_name}'s pathophysiology
+3. Existing treatments and market saturation
+4. Scientific plausibility of this drug-disease combination
+
+PROVIDE:
+1. Does this drug-disease combination make pharmacological sense? Why or why not?
+2. What is the mechanism of action and does it address the disease?
+3. Are there existing approved treatments? How saturated is the market?
+4. What are the major scientific limitations?
+5. Your HONEST research opportunity score (0-10).
+
+Be direct and harsh. If it doesn't make sense, say so."""
+
+            # Call Gemini
+            model = genai.GenerativeModel('gemini-2.5-flash')
+            response = model.generate_content(
+                user_prompt,
+                generation_config=genai.GenerationConfig(
+                    temperature=0.3,  # Lower temp for more focused/honest assessment
+                    max_output_tokens=1500,
+                )
+            )
+            
+            gemini_response = response.text
+            
+            # Strip markdown formatting
+            clean_assessment = self._strip_markdown(gemini_response)
+            
+            # Extract score from response
+            gemini_score = self._extract_score_from_gemini(gemini_response)
+            
+            # Calculate evidence counts
+            supporting_count = len([r for r in references if r.get('relevance', 0) > 0.6])
+            contradicting_count = len([r for r in references if r.get('relevance', 0) < 0.3])
+            
+            # Get unique agents
+            agents = set()
+            for ref in references:
+                if 'agentId' in ref:
+                    agents.add(ref['agentId'])
+            agent_count = len(agents)
+            
+            if self.debug:
+                logger.info(f"[ROS-GEMINI] Gemini score: {gemini_score:.1f}")
+                logger.info(f"[ROS-GEMINI] Supporting: {supporting_count}, Contradicting: {contradicting_count}, Agents: {agent_count}")
+                logger.info(f"[ROS-GEMINI] Gemini assessment:\n{clean_assessment[:500]}...")
+            
+            return {
+                "ros_score": gemini_score,
+                "calculation_method": "gemini_honest",
+                "confidence_level": self._get_confidence_level(gemini_score),
+                "gemini_assessment": clean_assessment,
+                "metadata": {
+                    "drug_name": drug_name,
+                    "disease_name": disease_name,
+                    "num_supporting_evidence": supporting_count,
+                    "num_contradicting_evidence": contradicting_count,
+                    "distinct_agents": list(agents),
+                    "num_references": len(references),
+                    "num_insights": len(insights),
+                    "computation_timestamp": datetime.utcnow().isoformat(),
+                    "method": "Direct Gemini evaluation (brutally honest)",
+                }
+            }
+            
+        except Exception as e:
+            logger.error(f"[ROS-GEMINI] Error calling Gemini: {e}", exc_info=True)
+            # Fallback to deterministic scoring
+            logger.info("[ROS] Falling back to deterministic scoring")
+            result = self.calculate_ros(query, references, insights, akgp_stats)
+            result["calculation_method"] = "fallback_deterministic"
+            return result
+    
+    def _prepare_evidence_summary(self, references: List[Dict[str, Any]], insights: List[Dict[str, Any]]) -> str:
+        """Prepare a human-readable evidence summary for Gemini"""
+        
+        # Count by type
+        trial_count = len([r for r in references if r.get('type') in ['clinical_trial', 'clinical-trial']])
+        literature_count = len([r for r in references if r.get('type') == 'literature'])
+        patent_count = len([r for r in references if r.get('type') == 'patent'])
+        market_count = len([r for r in references if r.get('type') == 'market'])
+        
+        # Get relevance distribution
+        high_relevance = len([r for r in references if r.get('relevance', 0) > 0.7])
+        medium_relevance = len([r for r in references if 0.4 <= r.get('relevance', 0) <= 0.7])
+        low_relevance = len([r for r in references if r.get('relevance', 0) < 0.4])
+        
+        # Phases
+        phases = set()
+        for ref in references:
+            phase = ref.get('phase', '')
+            if phase:
+                phases.add(phase)
+        
+        # Trial statuses
+        statuses = set()
+        for ref in references:
+            status = ref.get('status', '')
+            if status:
+                statuses.add(status.strip())
+        
+        # Get top insights
+        top_insights = insights[:3] if insights else []
+        
+        summary = f"""Total Evidence: {len(references)} references
+- Clinical Trials: {trial_count}
+- Literature: {literature_count}
+- Patents: {patent_count}
+- Market Data: {market_count}
+
+Evidence Quality:
+- High Relevance: {high_relevance}
+- Medium Relevance: {medium_relevance}
+- Low Relevance: {low_relevance}
+
+Trial Phases Present: {', '.join(sorted(phases)) if phases else 'Unknown'}
+
+Trial Statuses: {', '.join(sorted(statuses)) if statuses else 'Unknown'}
+
+Key Insights from Research:
+"""
+        for i, insight in enumerate(top_insights, 1):
+            text = insight.get('text', str(insight))[:200]
+            summary += f"{i}. {text}\n"
+        
+        return summary
+    
+    def _extract_score_from_gemini(self, response: str) -> float:
+        """Extract numeric ROS score from Gemini response"""
+        import re
+        
+        # Look for patterns like "score: 7.5" or "ROS: 8" or just "8/10"
+        patterns = [
+            r'(?:score|ros)\s*[:\s=]+\s*(\d+\.?\d*)',
+            r'(\d+\.?\d*)\s*(?:/10|out of 10)',
+            r'research opportunity score.*?(\d+\.?\d*)',
+        ]
+        
+        for pattern in patterns:
+            match = re.search(pattern, response, re.IGNORECASE)
+            if match:
+                try:
+                    score = float(match.group(1))
+                    # Clamp to 0-10
+                    return max(0.0, min(10.0, score))
+                except (ValueError, IndexError):
+                    continue
+        
+        # If no pattern matched, try to extract any number between 0-10
+        numbers = re.findall(r'\b([0-9]\.[0-9]|[0-9])\b', response)
+        for num_str in numbers:
+            try:
+                num = float(num_str)
+                if 0 <= num <= 10:
+                    return num
+            except ValueError:
+                continue
+        
+        # Default to 5.0 if we can't extract
+        logger.warning("[ROS-GEMINI] Could not extract score from Gemini response, defaulting to 5.0")
+        return 5.0
 
 
 # Singleton instance
@@ -482,4 +732,12 @@ def calculate_ros(
     """Calculate ROS score for query results"""
     return _ros_scorer.calculate_ros(query, references, insights, akgp_stats)
 
-    return _ros_scorer.calculate_ros(query, references, insights, akgp_stats)
+
+def calculate_ros_with_gemini(
+    query: str,
+    references: List[Dict[str, Any]],
+    insights: List[Dict[str, Any]],
+    akgp_stats: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """Calculate ROS score using Gemini's brutally honest evaluation"""
+    return _ros_scorer.calculate_ros_with_gemini(query, references, insights, akgp_stats)

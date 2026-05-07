@@ -37,6 +37,14 @@ const getScoreBgColor = (score: number): string => {
   return 'bg-rose-50';
 };
 
+const getScoreDescription = (score: number): string => {
+  if (score >= 9) return 'Exceptional opportunity - rare and highly novel';
+  if (score >= 7) return 'Good opportunity - strong potential and clear market gap';
+  if (score >= 5) return 'Moderate opportunity - mixed signals but feasible';
+  if (score >= 3) return 'Weak opportunity - significant limitations or saturation';
+  return 'Poor opportunity - insufficient evidence or major red flags';
+};
+
 export const ROSResultCard: React.FC<ROSResultCardProps> = ({ rosData }) => {
   const breakdown = rosData.breakdown || {};
   const metadata = rosData.metadata || {};
@@ -92,8 +100,13 @@ export const ROSResultCard: React.FC<ROSResultCardProps> = ({ rosData }) => {
 
       {/* Explanation */}
       <div className="bg-warm-bg-alt rounded-lg px-4 py-3 mb-6 border border-warm-divider">
+        <p className="text-xs text-warm-text-subtle font-inter uppercase tracking-wide mb-2">
+          Assessment
+        </p>
         <p className="text-sm text-warm-text font-inter leading-relaxed">
-          {rosData.explanation}
+          {rosData.explanation && rosData.explanation !== 'No explanation available' 
+            ? rosData.explanation 
+            : `Score: ${rosData.ros_score.toFixed(1)}/10 - ${getScoreDescription(rosData.ros_score)}`}
         </p>
       </div>
 

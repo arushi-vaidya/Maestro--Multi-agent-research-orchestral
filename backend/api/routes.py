@@ -14,7 +14,7 @@ from agents.master_agent import MasterAgent
 
 # STEP 7.6: Import API façade views
 from api.views.cache import get_cache
-from ros.scorer import calculate_ros
+from ros.scorer import calculate_ros, calculate_ros_with_gemini
 from api.views import ros_view, graph_view, evidence_view, conflict_view, execution_view
 
 # Set up logging
@@ -37,11 +37,13 @@ def get_master_agent():
 # Pydantic models for request/response validation
 class QueryRequest(BaseModel):
     query: str
+    ros_method: Optional[str] = "deterministic"  # "deterministic" or "gemini_honest"
     
     class Config:
         json_schema_extra = {
             "example": {
-                "query": "Analyze GLP-1 agonist market opportunity in diabetes"
+                "query": "Analyze GLP-1 agonist market opportunity in diabetes",
+                "ros_method": "gemini_honest"  # NEW: Use Gemini for honest scoring
             }
         }
 
@@ -128,13 +130,25 @@ def process_query(request: QueryRequest, response: Response):
 
         logger.info(f"Query processed successfully. Insights: {len(result.get('insights', []))}")
 
-        # Calculate ROS score from results
-        ros_result = calculate_ros(
-            query=request.query,
-            references=result.get('references', []),
-            insights=result.get('insights', [])
-        )
-        logger.info(f"✅ ROS Score calculated: {ros_result['ros_score']:.2f}")
+        # Calculate ROS score from results using requested method
+        ros_method = getattr(request, 'ros_method', 'deterministic')
+        
+        if ros_method == "gemini_honest":
+            logger.info("[ROS] Using Gemini-based brutally honest scoring...")
+            ros_result = calculate_ros_with_gemini(
+                query=request.query,
+                references=result.get('references', []),
+                insights=result.get('insights', [])
+            )
+        else:
+            logger.info("[ROS] Using deterministic scoring...")
+            ros_result = calculate_ros(
+                query=request.query,
+                references=result.get('references', []),
+                insights=result.get('insights', [])
+            )
+        
+        logger.info(f"✅ ROS Score calculated: {ros_result['ros_score']:.2f} (method: {ros_result.get('calculation_method', 'unknown')})")
 
         # STEP 7.6: Cache results for API façade views
         cache = get_cache()

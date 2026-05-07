@@ -43,10 +43,13 @@ class MaestroAPIClient {
   /**
    * Submit pharmaceutical research query
    * Triggers full agent orchestration (Clinical, Patent, Market, Literature)
+   * @param query The research query
+   * @param rosMethod ROS calculation method: 'deterministic' (fast) or 'gemini_honest' (honest assessment)
    */
-  async submitQuery(query: string): Promise<QueryResponse> {
+  async submitQuery(query: string, rosMethod: 'deterministic' | 'gemini_honest' = 'gemini_honest'): Promise<QueryResponse> {
     const response = await this.client.post<QueryResponse>('/query', {
       query,
+      ros_method: rosMethod,
     } as QueryRequest);
     return response.data;
   }

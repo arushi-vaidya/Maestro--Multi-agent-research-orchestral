@@ -80,9 +80,9 @@ export const Hypothesis: React.FC = () => {
       // Note: We transition to EXECUTING immediately to show the UI
       setConsoleState('EXECUTING');
       
-      // Fire the POST request (Blocking)
+      // Fire the POST request (Blocking) with gemini_honest ROS for scientific validity
       // We start polling in parallel in useEffect
-      const response = await api.submitQuery(query);
+      const response = await api.submitQuery(query, 'gemini_honest');
       setQueryData(response);
       const queryId = response.query_id || 'latest';
       setCurrentQueryId(response.query_id || null);

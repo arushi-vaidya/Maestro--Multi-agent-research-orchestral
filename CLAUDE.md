@@ -77,6 +77,54 @@ python main.py
 - **Gemini**: https://aistudio.google.com/app/apikey (free tier available)
 - **SerpAPI**: https://serpapi.com/users/sign_up (100 free searches/month)
 
+## ROS Scoring (May 2026 Update)
+
+### Two Methods Now Available
+
+**1. Deterministic ROS** (Original)
+- Component-based formula
+- Transparent weights
+- Instant calculation
+- Reproducible results
+
+**2. Gemini-based Honest ROS** (NEW)
+- Direct Gemini API evaluation
+- Contextual risk assessment
+- Market saturation awareness
+- ~2-5 second latency
+
+### Usage
+
+```python
+from ros.scorer import calculate_ros_with_gemini
+
+# Get brutal honesty
+result = calculate_ros_with_gemini(query, references, insights)
+print(result['ros_score'])  # 0-10
+print(result['gemini_assessment'])  # Full narrative
+```
+
+### API Endpoint
+```bash
+# Deterministic (default)
+curl -X POST http://localhost:8000/api/query \
+  -d '{"query": "GLP-1 for diabetes"}'
+
+# Gemini honest (new)
+curl -X POST http://localhost:8000/api/query \
+  -d '{"query": "GLP-1 for diabetes", "ros_method": "gemini_honest"}'
+```
+
+### Configuration
+- API Key: Already in `backend/.env` as `GOOGLE_API_KEY`
+- Method: Supports both deterministic and Gemini in single query
+- Fallback: Auto-switches to deterministic if Gemini fails
+
+### Documentation
+- Full Guide: [GEMINI_ROS_COMPLETE_INTEGRATION.md](GEMINI_ROS_COMPLETE_INTEGRATION.md)
+- Examples: [GEMINI_ROS_EXAMPLES.md](GEMINI_ROS_EXAMPLES.md)
+- Quick Ref: [GEMINI_ROS_QUICKREF.md](GEMINI_ROS_QUICKREF.md)
+
 ### Backend Won't Start
 
 ```bash

@@ -151,6 +151,7 @@ export interface ExecutionStatusResponse {
 
 export interface QueryRequest {
   query: string;
+  ros_method?: 'deterministic' | 'gemini_honest';
 }
 
 export interface QueryResponse {

@@ -160,8 +160,8 @@ def get_latest_ros(
         # Extract conflict penalty specifically
         conflict_penalty = breakdown.get('conflict_penalty', 0.0)
 
-        # Extract explanation
-        explanation = ros_result.get('explanation', 'No explanation available')
+        # Extract explanation - prioritize gemini_assessment if available (from Gemini ROS)
+        explanation = ros_result.get('gemini_assessment') or ros_result.get('explanation', 'No explanation available')
 
         # Build metadata for frontend
         frontend_metadata = {
