@@ -21,6 +21,7 @@ Factors:
 import logging
 import math
 import os
+import json
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 import google.generativeai as genai
@@ -560,14 +561,18 @@ Based on what you know about:
 3. Existing treatments and market saturation
 4. Scientific plausibility of this drug-disease combination
 
-PROVIDE:
-1. Does this drug-disease combination make pharmacological sense? Why or why not?
-2. What is the mechanism of action and does it address the disease?
-3. Are there existing approved treatments? How saturated is the market?
-4. What are the major scientific limitations?
-5. Your HONEST research opportunity score (0-10).
+Return ONLY valid JSON in this exact shape:
+{{
+  "ros_score": <number 0-10>,
+  "assessment": "<direct explanation>"
+}}
 
-Be direct and harsh. If it doesn't make sense, say so."""
+Rules:
+- "ros_score" must be numeric and between 0 and 10.
+- Do not use markdown.
+- Do not include numbered lists.
+- Do not include any keys other than ros_score and assessment.
+- Be direct and harsh. If it doesn't make sense, say so."""
 
             # Call Gemini
             model = genai.GenerativeModel('gemini-2.5-flash')
@@ -579,13 +584,11 @@ Be direct and harsh. If it doesn't make sense, say so."""
                 )
             )
             
-            gemini_response = response.text
+            gemini_response = response.text or ""
             
-            # Strip markdown formatting
-            clean_assessment = self._strip_markdown(gemini_response)
-            
-            # Extract score from response
-            gemini_score = self._extract_score_from_gemini(gemini_response)
+            # Extract score from response (robust against numbered list artifacts)
+            gemini_score, parsed_assessment = self._extract_score_and_assessment_from_gemini(gemini_response)
+            clean_assessment = parsed_assessment or self._strip_markdown(gemini_response)
             
             # Calculate evidence counts
             supporting_count = len([r for r in references if r.get('relevance', 0) > 0.6])
@@ -683,40 +686,42 @@ Key Insights from Research:
         
         return summary
     
-    def _extract_score_from_gemini(self, response: str) -> float:
-        """Extract numeric ROS score from Gemini response"""
+    def _extract_score_and_assessment_from_gemini(self, response: str) -> tuple[float, str]:
+        """Extract ROS score and assessment from Gemini response safely."""
         import re
-        
-        # Look for patterns like "score: 7.5" or "ROS: 8" or just "8/10"
+
+        # 1) Preferred path: strict JSON response
+        try:
+            json_match = re.search(r'\{[\s\S]*\}', response)
+            if json_match:
+                parsed = json.loads(json_match.group())
+                score_val = parsed.get("ros_score")
+                if isinstance(score_val, (int, float, str)):
+                    score = max(0.0, min(10.0, float(score_val)))
+                    assessment = self._strip_markdown(str(parsed.get("assessment", "")).strip())
+                    return score, assessment
+        except Exception:
+            pass
+
+        # 2) Label-based extraction only (avoid "1." from numbered lists)
         patterns = [
-            r'(?:score|ros)\s*[:\s=]+\s*(\d+\.?\d*)',
-            r'(\d+\.?\d*)\s*(?:/10|out of 10)',
-            r'research opportunity score.*?(\d+\.?\d*)',
+            r'["\']?ros_score["\']?\s*:\s*(\d+(?:\.\d+)?)',
+            r'(?:ros_score|research opportunity score|ros|score)\s*[:=\-]\s*(\d+(?:\.\d+)?)',
+            r'(?:ros_score|research opportunity score|ros|score)\s+is\s+(\d+(?:\.\d+)?)',
+            r'(\d+(?:\.\d+)?)\s*(?:/10|out of 10)',
         ]
-        
         for pattern in patterns:
             match = re.search(pattern, response, re.IGNORECASE)
             if match:
                 try:
-                    score = float(match.group(1))
-                    # Clamp to 0-10
-                    return max(0.0, min(10.0, score))
+                    score = max(0.0, min(10.0, float(match.group(1))))
+                    return score, self._strip_markdown(response)
                 except (ValueError, IndexError):
                     continue
-        
-        # If no pattern matched, try to extract any number between 0-10
-        numbers = re.findall(r'\b([0-9]\.[0-9]|[0-9])\b', response)
-        for num_str in numbers:
-            try:
-                num = float(num_str)
-                if 0 <= num <= 10:
-                    return num
-            except ValueError:
-                continue
-        
-        # Default to 5.0 if we can't extract
-        logger.warning("[ROS-GEMINI] Could not extract score from Gemini response, defaulting to 5.0")
-        return 5.0
+
+        # 3) Safe fallback
+        logger.warning("[ROS-GEMINI] Could not reliably extract score from Gemini response, defaulting to 5.0")
+        return 5.0, self._strip_markdown(response)
 
 
 # Singleton instance

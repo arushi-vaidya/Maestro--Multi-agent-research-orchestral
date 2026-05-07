@@ -25,7 +25,7 @@ I've successfully integrated Gemini-based ROS scoring with automatic API key loa
 - ✅ Support for both "deterministic" and "gemini_honest" methods
 
 ### 3. **Environment Setup** (`backend/.env`)
-- ✅ API key already present: `GOOGLE_API_KEY=AIzaSyCbTUN...`
+- ✅ API key already present: `GOOGLE_API_KEY=AIza...` (kept in .env only)
 - ✅ Uses python-dotenv for automatic loading
 - ✅ No manual environment variable setting needed
 
@@ -132,7 +132,7 @@ python test_gemini_ros_standalone.py
 
 Expected output:
 ```
-✅ Loaded GOOGLE_API_KEY from .env: AIzaSyCbTUN...
+✅ Loaded GOOGLE_API_KEY from .env: AIza...
 ✅ ROS Score: 4.0/10
 📋 Gemini's Brutal Assessment: ...
 ```

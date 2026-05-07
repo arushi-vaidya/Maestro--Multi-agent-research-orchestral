@@ -14,6 +14,8 @@ import type {
   EvidenceTimelineResponse,
   ConflictExplanationResponse,
   ExecutionStatusResponse,
+  ChemicalCompositionRequest,
+  ChemicalCompositionResponse,
 } from '../types/api';
 
 // API base URL - configurable via environment variable
@@ -141,6 +143,17 @@ class MaestroAPIClient {
         query_id: queryId,
       },
     });
+    return response.data;
+  }
+
+  /**
+   * Analyze chemical composition of a compound
+   * Uses Gemini API to provide detailed analysis
+   * 
+   * @param request ChemicalCompositionRequest with compound name and optional context
+   */
+  async analyzeChemicalComposition(request: ChemicalCompositionRequest): Promise<ChemicalCompositionResponse> {
+    const response = await this.client.post<ChemicalCompositionResponse>('/chemical-composition', request);
     return response.data;
   }
 }

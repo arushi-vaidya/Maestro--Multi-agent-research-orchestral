@@ -121,7 +121,39 @@ export interface ConflictExplanationResponse {
 }
 
 // ==============================================================================
-// EXECUTION STATUS TYPES
+// CHEMICAL COMPOSITION TYPES
+// ==============================================================================
+
+export interface ChemicalCompositionRequest {
+  compound_name: string;
+  context?: string;
+}
+
+export interface ChemicalCompositionResponse {
+  compound_name: string;
+  chemical_formula?: string;
+  molecular_weight?: number;
+  iupac_name?: string;
+  chemical_structure?: string;
+  structure_details?: string;
+  pharmacophore_elements?: string;
+  drug_similarity_analysis?: string;
+  similarity_score?: number;
+  similar_drugs?: string[];
+  mechanism_of_action?: string;
+  therapeutic_potential?: string;
+  structure_activity_relationship?: string;
+  key_interactions?: string;
+  safety_considerations?: string;
+  allergy_medical_cautions?: string;
+  suggested_alternatives?: string[];
+  optimization_potential?: string;
+  smiles?: string;
+  evidence_confidence: 'LOW' | 'MEDIUM' | 'HIGH';
+  analysis_status?: string;
+  error?: string;
+}
+
 // ==============================================================================
 
 export interface AgentExecutionDetail {

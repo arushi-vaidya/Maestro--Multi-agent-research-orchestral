@@ -14,6 +14,7 @@ export { CalmButton } from './CalmButton';
 export { CalmCard } from './CalmCard';
 export { CalmDivider } from './CalmDivider';
 export { CalmInput } from './CalmInput';
+export { ChemicalComposition } from './ChemicalComposition';
 export { ConfidenceEvolutionCard } from './ConfidenceEvolutionCard';
 export { ConfidenceSummaryCard } from './ConfidenceSummaryCard';
 export { ConflictSummary } from './ConflictSummary';

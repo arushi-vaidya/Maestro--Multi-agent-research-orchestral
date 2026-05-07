@@ -46,21 +46,20 @@ https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:gen
 ### 3. Wrong Environment Variable Names (CONFIGURATION)
 **Issue**: `.env` has `SERPAPI_API_KEY` but code expects `SERPAPI_KEY`
 
-**Your .env**:
-```bash
-SERPAPI_API_KEY=aa9ef68d1c533f58eabcf124de81e08d32d4cb7cb5011bb4da8ca15585262581
-```
+**Your .env**: Should contain `SERPAPI_API_KEY=<your-key>` (kept in .env only)
 
 **Code expects**: `SERPAPI_KEY` or `{PROVIDER}_API_KEY`
 
 **Fix Needed**: Rename in `.env`:
 ```bash
 # BEFORE:
-SERPAPI_API_KEY=aa9ef68d1c533f58eabcf124de81e08d32d4cb7cb5011bb4da8ca15585262581
+SERPAPI_API_KEY=<your-actual-key>
 
 # AFTER:
-SERPAPI_KEY=aa9ef68d1c533f58eabcf124de81e08d32d4cb7cb5011bb4da8ca15585262581
+SERPAPI_KEY=<your-actual-key>
 ```
+
+**⚠️ IMPORTANT**: Never commit API keys to git. Store only in `.env` file.
 
 **Status**: ⚠️ NEEDS MANUAL FIX
 
@@ -101,17 +100,19 @@ SERPAPI_KEY=aa9ef68d1c533f58eabcf124de81e08d32d4cb7cb5011bb4da8ca15585262581
 
 ### Step 1: Fix Environment Variable
 ```bash
-cd /Users/aryangupta/Developer/Maestro--Multi-agent-research-orchestral/backend
+cd backend
 nano .env  # or use any editor
 
 # Change this line:
-SERPAPI_API_KEY=aa9ef68d1c533f58eabcf124de81e08d32d4cb7cb5011bb4da8ca15585262581
+SERPAPI_API_KEY=<your-key>
 
 # To this:
-SERPAPI_KEY=aa9ef68d1c533f58eabcf124de81e08d32d4cb7cb5011bb4da8ca15585262581
+SERPAPI_KEY=<your-key>
 
 # Save and exit
 ```
+
+**⚠️ SECURITY**: Never commit API keys. .env is in .gitignore.
 
 ### Step 2: Restart Backend (REQUIRED)
 ```bash

@@ -21,9 +21,10 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
 import { PageContainer, CalmCard } from '../../components/calm';
+import { ChemicalComposition } from '../../components/calm/ChemicalComposition';
 import { api } from '../../services/api';
 import { useQueryRefresh } from '../../context/QueryContext';
-import type { EvidenceTimelineResponse, EvidenceTimelineEvent, ROSViewResponse } from '../../types/api';
+import type { EvidenceTimelineResponse, EvidenceTimelineEvent, ROSViewResponse, ChemicalCompositionResponse } from '../../types/api';
 import { Calendar, TrendingUp, TrendingDown } from 'lucide-react';
 
 // ==============================================================================
@@ -49,6 +50,9 @@ export const Timeline: React.FC = () => {
   const [timeRange, setTimeRange] = useState<TimeRange>('all');
   const [evidenceType, setEvidenceType] = useState<EvidenceType>('all');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [chemicalComposition, setChemicalComposition] = useState<ChemicalCompositionResponse | null>(null);
+  const [chemicalLoading, setChemicalLoading] = useState(false);
+  const [chemicalError, setChemicalError] = useState<string | null>(null);
 
   /**
    * Effect: Load timeline and ROS data on mount and when query changes
@@ -84,7 +88,63 @@ export const Timeline: React.FC = () => {
     };
 
     fetchData();
-  }, [queryCount, lastQueryId]);
+
+    // Fetch chemical composition if we have a drug name from the query
+    const fetchChemicalComposition = async () => {
+      try {
+        const queryId = lastQueryId || undefined;
+        const cleanedQuery = (lastQueryText || '').trim();
+        let drugName = '';
+
+        // Primary extraction from query text: "<drug> for <disease>"
+        if (cleanedQuery) {
+          const forSplit = cleanedQuery.split(/\s+for\s+/i);
+          if (forSplit[0]?.trim()) {
+            drugName = forSplit[0].trim().replace(/[?.!,;:]+$/, '');
+          }
+        }
+
+        // Fallback: use ROS drug label (works after refresh if query text is gone)
+        if (!drugName || drugName.length < 2) {
+          const ros = rosData || (await api.getROSLatest(queryId));
+          const rosDrug = (ros?.drug || '').trim();
+          if (rosDrug && !rosDrug.toLowerCase().includes('unknown')) {
+            drugName = rosDrug;
+          }
+        }
+
+        if (drugName.length < 2) return;
+
+        console.log('[Timeline] Fetching chemical composition for:', drugName);
+        setChemicalLoading(true);
+        setChemicalError(null);
+
+        const composition = await api.analyzeChemicalComposition({
+          compound_name: drugName,
+          context: cleanedQuery || undefined,
+        });
+
+        setChemicalComposition(composition);
+        console.log('[Timeline] Chemical composition loaded:', composition);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to load chemical composition';
+        console.warn('Chemical composition fetch warning:', message);
+        setChemicalError(message);
+        // Don't set error as blocking - this is supplementary data
+      } finally {
+        setChemicalLoading(false);
+      }
+    };
+
+    // Delay chemical composition fetch slightly to prioritize timeline data
+    const chemicalTimer = setTimeout(() => {
+      fetchChemicalComposition();
+    }, 500);
+
+    return () => {
+      clearTimeout(chemicalTimer);
+    };
+  }, [queryCount, lastQueryId, lastQueryText]);
 
   const queryLabel = useMemo(() => {
     if (lastQueryText && lastQueryText.trim()) {
@@ -311,6 +371,59 @@ export const Timeline: React.FC = () => {
           ))}
         </div>
       </div>
+
+      {/* CHEMICAL COMPOSITION SECTION */}
+      {chemicalComposition ? (
+        <div className="mb-12">
+          <ChemicalComposition
+            data={chemicalComposition}
+            isLoading={chemicalLoading}
+            isExpanded={false}
+          />
+        </div>
+      ) : null}
+
+      {chemicalLoading && (
+        <div className="mb-12">
+          <ChemicalComposition
+            data={{
+              compound_name: 'Loading...',
+              evidence_confidence: 'MEDIUM',
+              analysis_status: 'loading',
+            } as ChemicalCompositionResponse}
+            isLoading={true}
+          />
+        </div>
+      )}
+
+      {chemicalError && !chemicalComposition && !chemicalLoading && (
+        <div className="mb-12">
+          <ChemicalComposition
+            data={{
+              compound_name: 'Chemical analysis',
+              evidence_confidence: 'LOW',
+              analysis_status: 'failed',
+              error: chemicalError,
+            }}
+            isExpanded={true}
+          />
+        </div>
+      )}
+
+      {!chemicalComposition && !chemicalLoading && !chemicalError && (
+        <div className="mb-12">
+          <ChemicalComposition
+            data={{
+              compound_name: 'Chemical analysis',
+              evidence_confidence: 'MEDIUM',
+              analysis_status: 'idle',
+              chemical_structure:
+                'Run a query with a specific compound (for example: "Atorvastatin for hypercholesterolemia") to generate molecular structure and composition insights.',
+            }}
+            isExpanded={true}
+          />
+        </div>
+      )}
 
       {/* MAIN GRID: LEFT PANEL + RIGHT TIMELINE */}
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-8">

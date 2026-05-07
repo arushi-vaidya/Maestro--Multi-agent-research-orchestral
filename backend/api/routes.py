@@ -17,6 +17,9 @@ from api.views.cache import get_cache
 from ros.scorer import calculate_ros, calculate_ros_with_gemini
 from api.views import ros_view, graph_view, evidence_view, conflict_view, execution_view
 
+# Import Chemical Composition Service
+from services.chemical_composition_service import get_chemical_composition_service
+
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -82,6 +85,59 @@ class AgentExecutionStatus(BaseModel):
     completed_at: Optional[str] = None
     result_count: Optional[int] = None  # trials for clinical, sources for market
 
+class ChemicalCompositionRequest(BaseModel):
+    """Request for chemical composition analysis"""
+    compound_name: str
+    context: Optional[str] = None  # Additional context like indication or mechanism
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "compound_name": "Semaglutide",
+                "context": "GLP-1 receptor agonist for diabetes and weight loss"
+            }
+        }
+
+class ChemicalCompositionResponse(BaseModel):
+    """Chemical composition analysis response"""
+    compound_name: str
+    chemical_formula: Optional[str] = None
+    molecular_weight: Optional[float] = None
+    iupac_name: Optional[str] = None
+    chemical_structure: Optional[str] = None
+    structure_details: Optional[str] = None
+    pharmacophore_elements: Optional[str] = None
+    drug_similarity_analysis: Optional[str] = None
+    similarity_score: Optional[float] = None
+    similar_drugs: Optional[List[str]] = None
+    mechanism_of_action: Optional[str] = None
+    therapeutic_potential: Optional[str] = None
+    structure_activity_relationship: Optional[str] = None
+    key_interactions: Optional[str] = None
+    safety_considerations: Optional[str] = None
+    allergy_medical_cautions: Optional[str] = None
+    suggested_alternatives: Optional[List[str]] = None
+    optimization_potential: Optional[str] = None
+    smiles: Optional[str] = None
+    evidence_confidence: str = "MEDIUM"  # HIGH, MEDIUM, LOW
+    analysis_status: Optional[str] = None
+    error: Optional[str] = None
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "compound_name": "Semaglutide",
+                "chemical_formula": "C187H291N45O59",
+                "molecular_weight": 4113.6,
+                "iupac_name": "...",
+                "chemical_structure": "39-amino acid peptide derivative...",
+                "mechanism_of_action": "GLP-1 receptor agonist...",
+                "similarity_score": 0.85,
+                "similar_drugs": ["Liraglutide", "Dulaglutide", "Tirzepatide"],
+                "evidence_confidence": "HIGH"
+            }
+        }
+
 class QueryResponse(BaseModel):
     # Existing fields (backward compatible)
     query_id: Optional[str] = None  # unique id for this query execution
@@ -98,6 +154,48 @@ class QueryResponse(BaseModel):
     agent_execution_status: Optional[List[AgentExecutionStatus]] = None  # Detailed execution tracking
     market_intelligence: Optional[MarketIntelligence] = None  # Full market data
     total_trials: Optional[int] = None              # Clinical results count
+
+@router.post("/chemical-composition", response_model=ChemicalCompositionResponse)
+def analyze_chemical_composition(request: ChemicalCompositionRequest):
+    """
+    Analyze chemical composition of a compound using Gemini API
+    
+    This endpoint:
+    1. Receives compound name and optional context
+    2. Uses Gemini API to analyze chemical properties
+    3. Returns detailed structure, formula, similarities, and therapeutic potential
+    
+    Returns:
+    - Chemical formula and molecular weight
+    - Detailed structure description
+    - Comparison to similar approved drugs
+    - Mechanism of action and therapeutic usefulness
+    - Structure-activity relationships
+    - Safety considerations
+    """
+    try:
+        logger.info(f"Analyzing chemical composition for: {request.compound_name}")
+        
+        # Get chemical composition service
+        service = get_chemical_composition_service()
+        
+        # Perform analysis
+        analysis = service.analyze_chemical_composition(
+            compound_name=request.compound_name,
+            context=request.context
+        )
+        
+        logger.info(f"✅ Chemical analysis completed for {request.compound_name}")
+        
+        # Convert to response model
+        return ChemicalCompositionResponse(**analysis)
+        
+    except Exception as e:
+        logger.error(f"Error analyzing chemical composition: {str(e)}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error analyzing chemical composition: {str(e)}"
+        )
 
 @router.post("/query", response_model=QueryResponse)
 def process_query(request: QueryRequest, response: Response):
