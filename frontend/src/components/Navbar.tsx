@@ -9,7 +9,7 @@ const Navbar: React.FC = () => {
     { path: '/', label: 'Home', icon: null },
     { path: '/hypothesis', label: 'Research', icon: Activity },
     { path: '/graph', label: 'Graph', icon: Network },
-    { path: '/timeline', label: 'Timeline', icon: Clock },
+    { path: '/timeline', label: 'Evidence', icon: Clock },
     { path: '/confidence', label: 'Confidence', icon: Target },
   ];
 
@@ -23,7 +23,7 @@ const Navbar: React.FC = () => {
               <FileText className="w-5 h-5 text-white" />
             </div>
             <span className="text-xl font-bold text-warm-text font-inter tracking-tight">
-              MAESTRO
+              PHARMAGRAPH
             </span>
           </Link>
 

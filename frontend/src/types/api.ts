@@ -1,5 +1,5 @@
 /**
- * TypeScript API Types for MAESTRO Backend Façade
+ * TypeScript API Types for PHARMAGRAPH Backend Façade
  *
  * These types match EXACTLY the backend API response schemas.
  * Source: backend/api/API_FACADE_README.md

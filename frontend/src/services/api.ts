@@ -1,5 +1,5 @@
 /**
- * MAESTRO API Client
+ * PHARMAGRAPH API Client
  *
  * Type-safe API client for backend façade endpoints.
  * Uses ONLY the READ-ONLY API façade (no backend modifications).
@@ -21,7 +21,7 @@ import type {
 // API base URL - configurable via environment variable
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000/api';
 
-class MaestroAPIClient {
+class PharmagraphAPIClient {
   private client: AxiosInstance;
 
   constructor(baseURL: string = API_BASE_URL) {
@@ -159,7 +159,7 @@ class MaestroAPIClient {
 }
 
 // Export singleton instance
-export const api = new MaestroAPIClient();
+export const api = new PharmagraphAPIClient();
 
 // Export class for testing
-export { MaestroAPIClient };
+export { PharmagraphAPIClient, PharmagraphAPIClient as MaestroAPIClient };

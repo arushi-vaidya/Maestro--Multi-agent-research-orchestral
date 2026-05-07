@@ -17,7 +17,7 @@ const NavigationHeader: React.FC<NavigationHeaderProps> = ({ currentPage }) => {
   const navItems = [
     { path: '/hypothesis', label: 'Research', icon: Activity, id: 'Research' },
     { path: '/graph', label: 'Graph', icon: Network, id: 'KnowledgeGraph' },
-    { path: '/timeline', label: 'Timeline', icon: Clock, id: 'Timeline' },
+    { path: '/timeline', label: 'Evidence', icon: Clock, id: 'Timeline' },
     { path: '/conflicts', label: 'Conflicts', icon: AlertTriangle, id: 'Conflicts' },
     { path: '/execution', label: 'Execution', icon: PlayCircle, id: 'Execution' },
   ];
@@ -32,7 +32,7 @@ const NavigationHeader: React.FC<NavigationHeaderProps> = ({ currentPage }) => {
               <FileText className="w-5 h-5 text-white" />
             </div>
             <span className="text-xl font-bold text-slate-900 tracking-tight">
-              MAESTRO
+              PHARMAGRAPH
             </span>
           </Link>
 

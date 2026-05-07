@@ -196,7 +196,7 @@ export const Hypothesis: React.FC = () => {
             Research Console
           </h1>
           <p className="text-warm-text-light font-inter text-sm">
-            MAESTRO Pharmaceutical Intelligence Grid
+            PHARMAGRAPH Pharmaceutical Intelligence Grid
           </p>
         </div>
         <div className="flex items-center gap-3">

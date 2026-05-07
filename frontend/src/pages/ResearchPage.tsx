@@ -365,7 +365,7 @@ ${sections.future_outlook}`.trim();
   const handleExportPDF = () => {
     if (!results) return;
     const pdfContent = `
-MAESTRO Analysis Report
+PHARMAGRAPH Analysis Report
 ========================
 
 Query: ${query}
@@ -424,7 +424,7 @@ ${idx + 1}. [${ref.nct_id ? 'CLINICAL TRIAL' : (ref.type?.toUpperCase() || 'REFE
             </div>
             <div>
               <h1 className="text-2xl font-bold bg-gradient-to-r from-neon-purple via-neon-blue to-neon-cyan bg-clip-text text-transparent">
-                MAESTRO Research Console
+                PHARMAGRAPH Research Console
               </h1>
               <p className="text-xs text-gray-500">Multi-Agent Therapeutic Intelligence</p>
             </div>

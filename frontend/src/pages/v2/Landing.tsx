@@ -19,7 +19,7 @@ export const Landing: React.FC = () => {
           <FileText className="w-10 h-10 text-white" />
         </div>
         <h1 className="text-6xl font-bold text-warm-text mb-6 font-inter tracking-tight">
-          MAESTRO
+          PHARMAGRAPH
         </h1>
         <p className="text-2xl text-warm-text mb-4 font-inter max-w-3xl mx-auto leading-relaxed">
           Multi-Agent Orchestration for Pharmaceutical Intelligence
@@ -52,7 +52,7 @@ export const Landing: React.FC = () => {
           Core Capabilities
         </h2>
         <p className="text-center text-warm-text-light mb-12 font-inter max-w-2xl mx-auto">
-          MAESTRO combines multi-agent systems with advanced knowledge graph technology to deliver comprehensive pharmaceutical intelligence.
+          PHARMAGRAPH combines multi-agent systems with advanced knowledge graph technology to deliver comprehensive pharmaceutical intelligence.
         </p>
 
         <div className="grid md:grid-cols-3 gap-6">
@@ -169,7 +169,7 @@ export const Landing: React.FC = () => {
       {/* Footer */}
       <footer className="border-t border-warm-divider pt-12 text-center">
         <p className="text-sm text-warm-text-light font-inter font-semibold mb-2">
-          MAESTRO Research Platform
+          PHARMAGRAPH Research Platform
         </p>
         <p className="text-xs text-warm-text-subtle font-inter">
           Multi-Agent Orchestration with AKGP and ROS

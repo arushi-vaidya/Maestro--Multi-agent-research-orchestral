@@ -181,7 +181,7 @@ const LandingPage: React.FC = () => {
             transition={{ duration: 0.8, delay: 0.4 }}
             className="text-xl md:text-2xl text-gray-400 mb-12 max-w-3xl mx-auto leading-relaxed"
           >
-            MAESTRO is an AI-powered multi-agent research console for strategic therapeutic intelligence.
+            PHARMAGRAPH is an AI-powered multi-agent research console for strategic therapeutic intelligence.
           </motion.p>
 
           <motion.div
@@ -353,7 +353,7 @@ const LandingPage: React.FC = () => {
       <footer className="relative z-10 py-12 px-6 border-t border-purple-500/20">
         <div className="max-w-7xl mx-auto text-center">
           <p className="text-gray-500">
-            © 2026 MAESTRO. Orchestrating the future of therapeutic intelligence.
+            © 2026 PHARMAGRAPH. Orchestrating the future of therapeutic intelligence.
           </p>
         </div>
       </footer>
